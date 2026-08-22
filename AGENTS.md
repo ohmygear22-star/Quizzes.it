@@ -48,6 +48,5 @@ Do not diagnose medical or mental-health conditions or present uncertain interpr
 
 Explicit owner approval is required before production publishing, deployment, price changes, paid marketing, external spending, or destructive action. Silence is not approval.
 
-## Phase 1 boundary
-
-Do not modify the live application implementation as part of Agentic Quiz Phase 1. Preserve existing uncommitted work unless the owner explicitly directs otherwise.
+## Current operating boundary
+The reusable multi-quiz architecture and sandbox payment flow are established. Preserve unrelated uncommitted work. Treat live Stripe activation, production payment changes, price changes, deployment, paid marketing, and destructive data actions as owner-approved release work; test-mode QA may proceed within the approved scope.
