@@ -10,6 +10,13 @@ const dataDir = process.env.DATA_DIR || "/data";
 const dataFile = path.join(dataDir, "purchases.json");
 const appOrigin = process.env.APP_ORIGIN || "https://quizzes.it.com";
 const accessDays = 7;
+const previewAuthHeader = process.env.PREVIEW_AUTH_HEADER || "";
+function allowsPreviewRequest(request, url) {
+  if (!previewAuthHeader || url.pathname === "/health" || url.pathname === "/api/stripe/webhook") return true;
+  const received = Buffer.from(request.headers.authorization || "");
+  const expected = Buffer.from(previewAuthHeader);
+  return received.length === expected.length && crypto.timingSafeEqual(received, expected);
+}
 const checkoutLimit = new Map();
 
 const quiz = {
@@ -381,6 +388,10 @@ const server = http.createServer(async (request, response) => {
   try {
     cleanExpired();
     const url = new URL(request.url, "http://droplet-local");
+    if (!allowsPreviewRequest(request, url)) {
+      response.writeHead(401, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "WWW-Authenticate": "Basic realm=\"Quiz preview\"" });
+      return response.end("Preview access required");
+    }
 
   if (request.method === "GET" && url.pathname === "/multi-quiz.js") {
     const script = fs.readFileSync("/app/public/multi-quiz.js");
