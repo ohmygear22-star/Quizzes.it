@@ -4,7 +4,7 @@
 
 This repository operates a paid, private self-discovery quiz business. The intended experience is one purchase per quiz, private email-bound access, temporary data, and retakes during a seven-day access period.
 
-The current live implementation is not yet a reusable multi-quiz architecture. Do not treat older prototypes as product truth.
+The current implementation uses a reusable multi-quiz architecture. Do not treat older prototypes as product truth.
 
 Create Agentic Quiz artifacts and production code on the DigitalOcean Droplet repository only, never in a local computer checkout.
 
