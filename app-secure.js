@@ -180,28 +180,37 @@ async function sendProductAccessEmail(purchase, token) {
   const from = process.env.MAIL_FROM;
   if (!apiKey || !from) throw new Error("Email delivery is not configured");
   const link = appOrigin + "/access/" + encodeURIComponent(token);
+  const title = String(product.metadata.title).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const continuation = Array.isArray(purchase.previewAnswers) && purchase.previewAnswers.length
     ? "Your first preview answers are saved, so you will continue from the remaining questions."
-    : "Use this same private link to take or revisit your quiz.";
-  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;line-height:1.55;color:#161515;">' +
-    '<h1>Your quiz access is ready.</h1><p>Payment received for <strong>' + product.metadata.title + '</strong>.</p>' +
-    '<p>' + continuation + '</p><p><a href="' + link + '">Continue your private quiz</a></p>' +
-    '<p>This personal link expires in 7 days. No account is needed.</p>' +
-    '<p>Need help? Reply to this email.</p></body></html>';
+    : "Take your time. You can return to your quiz while your access is active.";
+  const html = '<!doctype html><html lang="en"><body style="margin:0;padding:0;background:#f5f4f2;color:#29282c;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f4f2;"><tr><td align="center" style="padding:40px 16px;">' +
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;"><tr><td style="padding:52px 52px 46px;">' +
+    '<p style="margin:0 0 34px;text-align:center;"><img src="' + appOrigin + '/brand-arch.png" width="68" height="68" alt="Quizzes it" style="display:inline-block;border:0;outline:0;text-decoration:none;"></p>' +
+    '<p style="margin:0 0 52px;text-align:center;color:#29282c;font-size:13px;font-weight:700;letter-spacing:5px;">QUIZZES IT</p>' +
+    '<h1 style="margin:0 0 28px;color:#29282c;font-size:34px;line-height:1.2;font-weight:700;letter-spacing:-0.6px;">Your private quiz is ready.</h1>' +
+    '<p style="margin:0 0 20px;color:#3b3a3e;font-size:18px;line-height:1.55;">Thank you for your purchase. Your personal access link is ready for <strong>' + title + '</strong>.</p>' +
+    '<p style="margin:0 0 34px;color:#3b3a3e;font-size:18px;line-height:1.55;">' + continuation + '</p>' +
+    '<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:12px;background:#171717;"><a href="' + link + '" style="display:inline-block;padding:18px 26px;color:#ffffff;font-size:17px;font-weight:700;line-height:1;text-decoration:none;">Continue your private quiz &#8594;</a></td></tr></table>' +
+    '<div style="height:1px;margin:42px 0 25px;background:#e3e0dc;"></div>' +
+    '<p style="margin:0 0 28px;color:#625f5d;font-size:15px;line-height:1.55;"><strong style="color:#29282c;">Private access:</strong> This link is personal to you and expires in 7 days. No account is needed.</p>' +
+    '<p style="margin:0 0 44px;color:#625f5d;font-size:15px;line-height:1.55;">Need help with your link? Reply to this email and we will help.</p>' +
+    '<p style="margin:0;color:#3b3a3e;font-size:16px;line-height:1.5;">Warmly,<br><strong>Quizzes it</strong></p>' +
+    '</td></tr></table></td></tr></table></body></html>';
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: from.includes("<") ? from : "Quizzes it <" + from + ">",
       to: [purchase.email],
-      subject: "Your quiz access is ready",
+      subject: "Your Quizzes it access link",
       html,
-      text: "Payment received for " + product.metadata.title + ".\n\n" + continuation + "\n\nContinue your private quiz:\n" + link + "\n\nThis link expires in 7 days. Need help? Reply to this email."
+      text: "Your private quiz is ready.\n\nPayment received for " + product.metadata.title + ".\n\n" + continuation + "\n\nContinue your private quiz: " + link + "\n\nThis personal link expires in 7 days. No account is needed.\n\nNeed help? Reply to this email."
     })
   });
   if (!response.ok) throw new Error("Email delivery failed");
 }
-
 function scoresFor(answers) {
   const scores = Object.fromEntries(profiles.map((profile) => [profile.key, profile.indexes.reduce((sum, index) => sum + answers[index], 0)]));
   const leading = [...profiles].sort((a, b) => scores[b.key] - scores[a.key])[0];
@@ -214,15 +223,19 @@ function stripeConfigured() {
 
 function verifyStripeSignature(body, signature) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret || !signature) return false;
-  const parts = Object.fromEntries(signature.split(",").map((part) => part.split("=")));
-  const timestamp = parts.t;
-  const signatureValue = parts.v1;
-  if (!timestamp || !signatureValue || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
-  const expected = crypto.createHmac("sha256", secret).update(timestamp + "." + body.toString("utf8")).digest("hex");
-  const expectedBuffer = Buffer.from(expected, "utf8");
-  const receivedBuffer = Buffer.from(signatureValue, "utf8");
-  return expectedBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+  if (!secret || typeof signature !== "string") return false;
+  const pairs = signature.split(",").map((part) => {
+    const i = part.indexOf("=");
+    return i < 0 ? [] : [part.slice(0, i), part.slice(i + 1)];
+  });
+  const timestamp = pairs.find(([key]) => key === "t")?.[1];
+  const values = pairs.filter(([key]) => key === "v1").map(([, value]) => value).filter(Boolean);
+  if (!timestamp || !values.length || !/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
+  const expected = Buffer.from(crypto.createHmac("sha256", secret).update(timestamp + "." + body.toString("utf8")).digest("hex"), "utf8");
+  return values.some((value) => {
+    const received = Buffer.from(value, "utf8");
+    return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+  });
 }
 
 async function sendAccessEmail(purchase, token) {
@@ -375,6 +388,12 @@ const server = http.createServer(async (request, response) => {
     return response.end(script);
   }
 
+  if (request.method === "GET" && url.pathname === "/brand-arch.png") {
+    const image = fs.readFileSync("/app/public/brand-arch.png");
+    response.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" });
+    return response.end(image);
+  }
+
   if (request.method === "GET" && !url.pathname.startsWith("/api/") && url.pathname !== "/health") {
       const page = fs.readFileSync("/app/public/index.html");
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
@@ -458,7 +477,8 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, outcome);
     }
     return sendJson(response, 404, { error: "Not found" });
-  } catch {
+  } catch (error) {
+    console.error("Quiz request failed", { method: request.method, path: request.url, error: error instanceof Error ? error.stack : String(error) });
     return sendJson(response, 500, { error: "The service could not complete that request" });
   }
 });
