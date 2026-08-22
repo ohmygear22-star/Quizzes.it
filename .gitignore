@@ -1,0 +1,33 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
+# Dependencies
+node_modules/
+**/node_modules
+.pnpm-store/
+
+# Build and test output
+dist/
+build/
+.build/
+.vite/
+.cache/
+coverage/
+test-results/
+playwright-report/
+
+# Local tooling and editor files
+.DS_Store
+.idea/
+.vscode/
+*.local
+*.local.*
+*.log

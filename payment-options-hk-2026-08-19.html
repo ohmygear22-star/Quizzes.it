@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Payment Options for a Hong Kong Quiz Website</title>
+  <style>
+    body { max-width: 820px; margin: 40px auto; padding: 0 20px; font: 16px/1.55 system-ui, sans-serif; color: #18212f; }
+    h1 { line-height: 1.15; } h2 { margin-top: 32px; }
+    .recommendation { background: #edf7f1; border-left: 4px solid #26834a; padding: 16px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { text-align: left; vertical-align: top; padding: 10px; border-bottom: 1px solid #d9dfe8; }
+    th { background: #f4f6f9; } .muted { color: #536171; }
+  </style>
+</head>
+<body>
+  <h1>Payment Options for a Hong Kong Quiz Website</h1>
+  <p class="muted">Scope: a low-budget, mobile-first, multilingual quiz website that receives funds in Hong Kong.</p>
+
+  <div class="recommendation">
+    <strong>Recommendation: use Airwallex instead of Stripe for the first launch.</strong><br>
+    It has a free entry plan, hosted checkout/payment links, global cards and local methods, and slightly lower published card fees. It also supports subscription management if that becomes useful later.
+  </div>
+
+  <h2>Comparison</h2>
+  <table>
+    <thead><tr><th>Option</th><th>Best for</th><th>Published cost / limitation</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Airwallex</strong></td><td>Best all-round Stripe replacement for this launch.</td><td>Free Explore plan. Domestic cards: 3.30% + HK$2.35; international cards: 3.60% + HK$2.35. Hosted checkout, payment links, Apple Pay/Google Pay, and local methods are available.</td></tr>
+      <tr><td><strong>PayPal Business</strong></td><td>Optional second button for buyers who strongly prefer PayPal.</td><td>Domestic commercial payments: 3.90% + HK$2.35; international payments add a percentage fee. Better buyer familiarity, but not the cheapest primary checkout.</td></tr>
+      <tr><td><strong>PayMe for Business</strong></td><td>Hong Kong customers only.</td><td>1.5% for website/API transactions. Useful later as an additional local method, not as a global primary processor. Website/app access may require onboarding or a partner integration.</td></tr>
+      <tr><td><strong>Paddle</strong></td><td>Global digital-product tax handling.</td><td>Merchant-of-record model can simplify VAT/GST/sales-tax administration. Confirm onboarding eligibility and commercial terms before choosing it; it is not automatically the lowest-fee option.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Simple launch setup</h2>
+  <ol>
+    <li>Use Airwallex hosted checkout so payment details never touch your DigitalOcean server.</li>
+    <li>Sell only one paid product first: a full-batch unlock at HK$99–199.</li>
+    <li>Add PayPal as a secondary checkout choice only if buyers request it.</li>
+    <li>Add PayMe only when Hong Kong becomes a meaningful customer market.</li>
+  </ol>
+
+  <h2>Sources</h2>
+  <ul>
+    <li><a href="https://www.airwallex.com/en-hk/pricing">Airwallex Hong Kong pricing</a></li>
+    <li><a href="https://www.airwallex.com/en-hk/payments/checkout">Airwallex Checkout</a></li>
+    <li><a href="https://pep.paypal.com/hk/business/paypal-business-fees?locale.x=en_HK">PayPal Hong Kong merchant fees</a></li>
+    <li><a href="https://payme.hsbc.com.hk/en/business-homepage">PayMe for Business</a></li>
+    <li><a href="https://developer.paddle.com/concepts/sell/supported-countries-locales/">Paddle supported countries</a></li>
+  </ul>
+</body>
+</html>
