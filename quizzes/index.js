@@ -1,0 +1,12 @@
+import recognitionPattern from "./recognition-pattern.js";
+import { assertValidQuiz, publicQuiz } from "../quiz-engine.js";
+const quizzes = [recognitionPattern].map(assertValidQuiz);
+const byId = new Map(quizzes.map((quiz) => [quiz.id, quiz]));
+const bySlug = new Map(quizzes.map((quiz) => [quiz.slug, quiz]));
+if (byId.size !== quizzes.length || bySlug.size !== quizzes.length) throw new Error("Quiz IDs and slugs must be unique");
+export const defaultQuiz = recognitionPattern;
+export const getQuizById = (id) => byId.get(id) || null;
+export const getQuizBySlug = (slug) => bySlug.get(slug) || null;
+export const listPublicQuizzes = () => quizzes.filter((quiz) => quiz.status === "live").map(publicQuiz);
+export const getPublicQuizBySlug = (slug) => { const quiz = getQuizBySlug(slug); return quiz?.status === "live" ? publicQuiz(quiz) : null; };
+export { quizzes };

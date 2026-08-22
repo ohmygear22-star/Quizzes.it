@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { getPublicQuizBySlug, listPublicQuizzes } from "./quizzes/index.js";
 
 const port = Number(process.env.PORT || 3000);
 const dataDir = process.env.DATA_DIR || "/data";
@@ -145,7 +144,7 @@ async function sendAccessEmail(purchase, token) {
   const from = process.env.MAIL_FROM;
   if (!apiKey || !from) throw new Error("Email delivery is not configured");
   const link = appOrigin + "/access/" + encodeURIComponent(token);
-  const logo = "cid:quizzes-it-arch";
+  const logo = appOrigin + "/brand-arch.png";
   const html = [
     '<!doctype html><html><body style="margin:0;background:#faf9f6;color:#161515;font-family:Arial,Helvetica,sans-serif;">',
     '<div style="max-width:560px;margin:0 auto;padding:56px 32px 48px;">',
@@ -167,7 +166,6 @@ async function sendAccessEmail(purchase, token) {
       to: [purchase.email],
       subject: "Your Quizzes it access link",
       html: html,
-      attachments: [{ content: fs.readFileSync("/app/public/brand-arch.png").toString("base64"), filename: "quizzes-it-arch.png", content_id: "quizzes-it-arch" }],
       text: "Your private quiz is ready.\n\nThank you for your purchase. Your access link is ready for How Do You Seek Recognition?\n\nOpen your quiz:\n" + link + "\n\nThis personal link expires in 7 days. No account is needed.\n\nNeed help? Reply to this email.\n\nQuizzes it"
     })
   });
@@ -242,30 +240,12 @@ const server = http.createServer(async (request, response) => {
   try {
     cleanExpired();
     const url = new URL(request.url, "http://droplet-local");
-
-  if (request.method === "GET" && url.pathname === "/multi-quiz.js") {
-    const script = fs.readFileSync("/app/public/multi-quiz.js");
-    response.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-store" });
-    return response.end(script);
-  }
-
-  if (request.method === "GET" && !url.pathname.startsWith("/api/") && url.pathname !== "/health") {
+    if (request.method === "GET" && !url.pathname.startsWith("/api/") && url.pathname !== "/health") {
       const page = fs.readFileSync("/app/public/index.html");
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       return response.end(page);
     }
     if (request.method === "GET" && url.pathname === "/health") return sendJson(response, 200, { status: "ok" });
-  if (request.method === "GET" && url.pathname === "/api/quizzes") {
-    return sendJson(response, 200, { quizzes: listPublicQuizzes() });
-  }
-
-  const quizMatch = url.pathname.match(/^\/api\/quizzes\/([a-z0-9-]+)$/);
-  if (request.method === "GET" && quizMatch) {
-    const product = getPublicQuizBySlug(quizMatch[1]);
-    return product
-      ? sendJson(response, 200, product)
-      : sendJson(response, 404, { error: "Quiz not found" });
-  }
     if (request.method === "GET" && url.pathname === "/api/quiz") return sendJson(response, 200, { id: quiz.id, title: quiz.title, price: quiz.amount, currency: quiz.currency, questions: quiz.questions });
     if (request.method === "POST" && url.pathname === "/api/checkout") {
       if (!stripeConfigured()) return sendJson(response, 503, { error: "Checkout is not configured" });
