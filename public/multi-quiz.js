@@ -143,7 +143,9 @@
   function route() {
     const path = location.pathname;
     const hash = location.hash.slice(1);
+    if (path.startsWith("/access/") && hash) { location.replace("/#" + hash); return; }
     if (path.startsWith("/access/")) return access(path.split("/").pop());
+    if (path === "/payment-success" && hash) { location.replace("/#" + hash); return; }
     if (path === "/payment-success") return render('<section class="page"><p class="ey">PAYMENT STATUS</p><h1>We are verifying your payment.</h1><p class="lead">Your private continuation link is emailed after Stripe confirms payment.</p></section>');
     if (path === "/payment-cancelled") return render('<section class="page"><h1>Nothing was charged.</h1><button class="primary" onclick="window.multiQuizGo(\'catalog\')">Return to quizzes →</button></section>');
     if (["how", "support", "privacy", "terms"].includes(hash) && typeof window.draw === "function") return window.draw();
