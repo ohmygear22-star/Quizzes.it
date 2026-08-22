@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { getPublicQuizBySlug, listPublicQuizzes } from "./quizzes/index.js";
+import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes } from "./quizzes/index.js";
+import { evaluatePreview, evaluateQuiz, previewQuestions } from "./quiz-engine.js";
 
 const port = Number(process.env.PORT || 3000);
 const dataDir = process.env.DATA_DIR || "/data";
@@ -45,9 +46,12 @@ function hash(value) {
 function readStore() {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataFile, "utf8"));
-    return Array.isArray(parsed.purchases) ? parsed : { purchases: [] };
+    return {
+      purchases: Array.isArray(parsed.purchases) ? parsed.purchases : [],
+      previewSessions: Array.isArray(parsed.previewSessions) ? parsed.previewSessions : []
+    };
   } catch (error) {
-    if (error.code === "ENOENT") return { purchases: [] };
+    if (error.code === "ENOENT") return { purchases: [], previewSessions: [] };
     throw error;
   }
 }
@@ -62,19 +66,23 @@ function writeStore(store) {
 function cleanExpired() {
   const store = readStore();
   const now = Date.now();
-  const keep = store.purchases.filter((purchase) => {
+  const purchases = store.purchases.filter((purchase) => {
     if (purchase.status === "pending") return now - Date.parse(purchase.createdAt) < 24 * 60 * 60 * 1000;
     return !purchase.expiresAt || Date.parse(purchase.expiresAt) > now;
   });
-  if (keep.length !== store.purchases.length) writeStore({ purchases: keep });
+  const previewSessions = store.previewSessions.filter((session) => Date.parse(session.expiresAt) > now);
+  if (purchases.length !== store.purchases.length || previewSessions.length !== store.previewSessions.length) {
+    writeStore({ purchases, previewSessions });
+  }
 }
 
-function sendJson(response, status, payload) {
+function sendJson(response, status, payload, headers = {}) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer"
+    "Referrer-Policy": "no-referrer",
+    ...headers
   });
   response.end(JSON.stringify(payload));
 }
@@ -115,6 +123,83 @@ function accessPurchase(token) {
   const purchase = store.purchases.find((item) => item.accessTokenHash === hash(token));
   if (!purchase || purchase.status !== "paid" || Date.parse(purchase.expiresAt) <= Date.now()) return null;
   return purchase;
+}
+
+function cookies(request) {
+  return Object.fromEntries(String(request.headers.cookie || "").split(";").map((part) => {
+    const index = part.indexOf("=");
+    return index < 0 ? [] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1))];
+  }).filter((entry) => entry.length));
+}
+
+function quizForPurchase(purchase) {
+  const quizId = purchase.quizId || defaultQuiz.id;
+  const quizVersion = purchase.quizVersion || defaultQuiz.version;
+  return getQuizByIdAndVersion(quizId, quizVersion);
+}
+
+function accessQuestions(quiz) {
+  return quiz.questions.map((question) => ({
+    id: question.id,
+    text: question.text,
+    options: question.options.map((option) => ({ id: option.id, text: option.text }))
+  }));
+}
+
+function previewSessionFor(request, quiz) {
+  const token = cookies(request).quiz_preview;
+  if (!token) return null;
+  const store = readStore();
+  return store.previewSessions.find((session) =>
+    session.tokenHash === hash(token) &&
+    session.quizId === quiz.id &&
+    session.quizVersion === quiz.version &&
+    Date.parse(session.expiresAt) > Date.now()
+  ) || null;
+}
+
+function productAccessPayload(purchase) {
+  const product = quizForPurchase(purchase);
+  if (!product) return null;
+  const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
+  const completedAnswers = Array.isArray(purchase.completedAnswers) ? purchase.completedAnswers : null;
+  const completed = completedAnswers ? evaluateQuiz(product, completedAnswers) : null;
+  return {
+    quiz: { id: product.id, slug: product.slug, version: product.version, title: product.metadata.title },
+    questions: accessQuestions(product),
+    previewAnswerCount: previewAnswers.length,
+    expiresAt: purchase.expiresAt,
+    completed
+  };
+}
+
+async function sendProductAccessEmail(purchase, token) {
+  const product = quizForPurchase(purchase);
+  if (!product) throw new Error("Purchased quiz version is unavailable");
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.MAIL_FROM;
+  if (!apiKey || !from) throw new Error("Email delivery is not configured");
+  const link = appOrigin + "/access/" + encodeURIComponent(token);
+  const continuation = Array.isArray(purchase.previewAnswers) && purchase.previewAnswers.length
+    ? "Your first preview answers are saved, so you will continue from the remaining questions."
+    : "Use this same private link to take or revisit your quiz.";
+  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;line-height:1.55;color:#161515;">' +
+    '<h1>Your quiz access is ready.</h1><p>Payment received for <strong>' + product.metadata.title + '</strong>.</p>' +
+    '<p>' + continuation + '</p><p><a href="' + link + '">Continue your private quiz</a></p>' +
+    '<p>This personal link expires in 7 days. No account is needed.</p>' +
+    '<p>Need help? Reply to this email.</p></body></html>';
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: from.includes("<") ? from : "Quizzes it <" + from + ">",
+      to: [purchase.email],
+      subject: "Your quiz access is ready",
+      html,
+      text: "Payment received for " + product.metadata.title + ".\n\n" + continuation + "\n\nContinue your private quiz:\n" + link + "\n\nThis link expires in 7 days. Need help? Reply to this email."
+    })
+  });
+  if (!response.ok) throw new Error("Email delivery failed");
 }
 
 function scoresFor(answers) {
@@ -216,12 +301,53 @@ async function createCheckout(email) {
   return session.url;
 }
 
+function offerFor(quiz, offerId) {
+  return quiz.offers.find((offer) => offer.id === offerId) || null;
+}
+
+async function createProductCheckout(email, quizProduct, offer, previewSession) {
+  const purchase = {
+    id: crypto.randomUUID(), email, status: "pending", createdAt: new Date().toISOString(),
+    accessTokenHash: null, paidAt: null, expiresAt: null, emailSentAt: null, stripeSessionId: null,
+    quizId: quizProduct.id, quizVersion: quizProduct.version, offerId: offer.id,
+    offerSnapshot: { label: offer.label, currency: offer.currency, amount: offer.amount },
+    previewAnswers: previewSession.answers
+  };
+  const params = new URLSearchParams();
+  params.set("mode", "payment");
+  params.set("success_url", appOrigin + "/payment-success?session_id={CHECKOUT_SESSION_ID}");
+  params.set("cancel_url", appOrigin + "/payment-cancelled");
+  params.set("customer_email", email);
+  params.set("client_reference_id", purchase.id);
+  params.set("line_items[0][price_data][currency]", offer.currency);
+  params.set("line_items[0][price_data][product_data][name]", quizProduct.metadata.title + " — " + offer.label);
+  params.set("line_items[0][price_data][unit_amount]", String(offer.amount));
+  params.set("line_items[0][quantity]", "1");
+  params.set("metadata[quiz_id]", quizProduct.id);
+  params.set("metadata[quiz_version]", String(quizProduct.version));
+  params.set("metadata[offer_id]", offer.id);
+  params.set("integration_identifier", "quizzes_" + crypto.randomBytes(4).toString("hex"));
+  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + process.env.STRIPE_SECRET_KEY, "Content-Type": "application/x-www-form-urlencoded", "Stripe-Version": "2026-06-24.dahlia" },
+    body: params
+  });
+  if (!response.ok) throw new Error("Checkout could not be created");
+  const session = await response.json();
+  purchase.stripeSessionId = session.id;
+  const store = readStore();
+  store.purchases.push(purchase);
+  writeStore(store);
+  return session.url;
+}
+
 async function markPaid(session) {
   const purchaseId = session.client_reference_id;
   if (!purchaseId) throw new Error("Missing purchase reference");
   const store = readStore();
   const purchase = store.purchases.find((item) => item.id === purchaseId);
   if (!purchase) throw new Error("Unknown purchase");
+  if (purchase.stripeSessionId && session.id && purchase.stripeSessionId !== session.id) throw new Error("Checkout session does not match purchase");
   if (purchase.status === "paid" && purchase.emailSentAt) return;
   const token = crypto.randomBytes(32).toString("base64url");
   purchase.accessTokenHash = hash(token);
@@ -230,7 +356,7 @@ async function markPaid(session) {
   purchase.expiresAt = new Date(Date.now() + accessDays * 24 * 60 * 60 * 1000).toISOString();
   purchase.stripeSessionId = session.id || purchase.stripeSessionId;
   writeStore(store);
-  await sendAccessEmail(purchase, token);
+  await sendProductAccessEmail(purchase, token);
   purchase.emailSentAt = new Date().toISOString();
   writeStore(store);
 }
@@ -267,13 +393,35 @@ const server = http.createServer(async (request, response) => {
       : sendJson(response, 404, { error: "Quiz not found" });
   }
     if (request.method === "GET" && url.pathname === "/api/quiz") return sendJson(response, 200, { id: quiz.id, title: quiz.title, price: quiz.amount, currency: quiz.currency, questions: quiz.questions });
+    const previewMatch = url.pathname.match(/^\/api\/quizzes\/([a-z0-9-]+)\/preview$/);
+    if (request.method === "GET" && previewMatch) {
+      const product = getQuizBySlug(previewMatch[1]);
+      if (!product || product.status !== "live" || !product.preview?.enabled) return sendJson(response, 404, { error: "Preview not found" });
+      return sendJson(response, 200, { title: product.metadata.title, questions: previewQuestions(product).map((question) => ({ id: question.id, text: question.text, options: question.options.map((option) => ({ id: option.id, text: option.text })) })) });
+    }
+    if (request.method === "POST" && previewMatch) {
+      const product = getQuizBySlug(previewMatch[1]);
+      if (!product || product.status !== "live" || !product.preview?.enabled) return sendJson(response, 404, { error: "Preview not found" });
+      const body = JSON.parse((await readBody(request)).toString("utf8"));
+      const teaser = evaluatePreview(product, body.answers);
+      const token = crypto.randomBytes(32).toString("base64url");
+      const store = readStore();
+      store.previewSessions.push({ tokenHash: hash(token), quizId: product.id, quizVersion: product.version, answers: body.answers, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
+      writeStore(store);
+      return sendJson(response, 200, { teaser }, { "Set-Cookie": "quiz_preview=" + encodeURIComponent(token) + "; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax" });
+    }
+
     if (request.method === "POST" && url.pathname === "/api/checkout") {
       if (!stripeConfigured()) return sendJson(response, 503, { error: "Checkout is not configured" });
       const remote = request.socket.remoteAddress || "unknown";
       if (!allow(remote, 5, 10 * 60 * 1000)) return sendJson(response, 429, { error: "Please try again later" });
       const body = JSON.parse((await readBody(request)).toString("utf8"));
       if (!validEmail(body.email)) return sendJson(response, 400, { error: "Enter a valid email address" });
-      return sendJson(response, 200, { checkoutUrl: await createCheckout(body.email.trim().toLowerCase()) });
+      const product = getQuizBySlug(body.quizSlug);
+      const offer = product && offerFor(product, body.offerId);
+      const preview = product && previewSessionFor(request, product);
+      if (!product || product.status !== "live" || !offer || !preview) return sendJson(response, 400, { error: "Complete the free preview before checkout" });
+      return sendJson(response, 200, { checkoutUrl: await createProductCheckout(body.email.trim().toLowerCase(), product, offer, preview) });
     }
     if (request.method === "POST" && url.pathname === "/api/stripe/webhook") {
       const raw = await readBody(request);
@@ -286,14 +434,28 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && accessMatch) {
       const purchase = accessPurchase(accessMatch[1]);
       if (!purchase) return sendJson(response, 404, { error: "This link is unavailable or has expired" });
-      return sendJson(response, 200, { title: quiz.title, questions: quiz.questions, expiresAt: purchase.expiresAt });
+      const payload = productAccessPayload(purchase);
+      if (!payload) return sendJson(response, 410, { error: "This quiz version is unavailable" });
+      return sendJson(response, 200, payload);
     }
     const resultMatch = url.pathname.match(/^\/api\/access\/([^/]+)\/result$/);
     if (request.method === "POST" && resultMatch) {
-      if (!accessPurchase(resultMatch[1])) return sendJson(response, 404, { error: "This link is unavailable or has expired" });
+      const purchase = accessPurchase(resultMatch[1]);
+      if (!purchase) return sendJson(response, 404, { error: "This link is unavailable or has expired" });
+      const product = quizForPurchase(purchase);
+      if (!product) return sendJson(response, 410, { error: "This quiz version is unavailable" });
       const body = JSON.parse((await readBody(request)).toString("utf8"));
-      if (!Array.isArray(body.answers) || body.answers.length !== quiz.questions.length || body.answers.some((answer) => !Number.isInteger(answer) || answer < 1 || answer > 5)) return sendJson(response, 400, { error: "Please answer every question" });
-      return sendJson(response, 200, scoresFor(body.answers));
+      const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
+      let answers = body.answers;
+      if (previewAnswers.length && Array.isArray(body.answers) && body.answers.length === product.questions.length - previewAnswers.length) answers = [...previewAnswers, ...body.answers];
+      const outcome = evaluateQuiz(product, answers);
+      purchase.completedAnswers = answers;
+      purchase.completedAt = new Date().toISOString();
+      const store = readStore();
+      const index = store.purchases.findIndex((item) => item.id === purchase.id);
+      if (index >= 0) store.purchases[index] = purchase;
+      writeStore(store);
+      return sendJson(response, 200, outcome);
     }
     return sendJson(response, 404, { error: "Not found" });
   } catch {
