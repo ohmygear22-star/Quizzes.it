@@ -3,7 +3,7 @@ const options = [
 ];
 const question = (id, text) => ({ id, text, options });
 export default {
-  id: "creative-return", slug: "how-do-you-return-to-creative-work", version: 1, status: "draft",
+  id: "creative-return", slug: "how-do-you-return-to-creative-work", version: 1, status: "live",
   metadata: { title: "How Do You Return to Creative Work?", description: "Explore the conditions that help you begin making again.", category: "creative-self-reflection", targetCustomer: "Adults who want a gentler way back into personal creative work", durationMinutes: 3, accessDays: 7 },
   preview: { enabled: true, questionIds: ["creative-return-01", "creative-return-02", "creative-return-03", "creative-return-04", "creative-return-05"], teaser: {
     heading: "What your first answers suggest",
