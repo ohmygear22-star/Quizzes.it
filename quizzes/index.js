@@ -1,7 +1,9 @@
 import recognitionPattern from "./recognition-pattern.js";
+import creativeReturn from "./creative-return.js";
+import decisionProtection from "./decision-protection.js";
 import { assertValidQuiz, publicQuiz } from "../quiz-engine.js";
 
-const quizzes = [recognitionPattern].map(assertValidQuiz);
+const quizzes = [recognitionPattern, creativeReturn, decisionProtection].map(assertValidQuiz);
 const byIdVersion = new Map(quizzes.map((quiz) => [quiz.id + "@" + quiz.version, quiz]));
 const latestById = new Map();
 
