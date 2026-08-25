@@ -4,9 +4,7 @@ WORKDIR /app
 COPY public ./public
 
 COPY app-secure.js ./
-COPY quiz-engine.js ./
-COPY adaptive-quiz-engine.js ./
-COPY quizzes ./quizzes
+COPY v31 ./v31
 
 RUN mkdir -p /data && chown node:node /data
 

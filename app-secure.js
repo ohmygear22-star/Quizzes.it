@@ -2,9 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes } from "./quizzes/index.js";
-import { evaluatePreview, evaluateQuiz, isAdaptiveQuiz, previewQuestions } from "./quiz-engine.js";
-import { nextAdaptiveQuestion } from "./adaptive-quiz-engine.js";
+import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes, evaluatePreview, evaluateQuiz, isAdaptiveQuiz, previewQuestions, nextAdaptiveQuestion } from "./v31/production-adapter.js";
 
 const port = Number(process.env.PORT || 3000);
 const dataDir = process.env.DATA_DIR || "/data";
@@ -19,33 +17,6 @@ function allowsPreviewRequest(request, url) {
   return received.length === expected.length && crypto.timingSafeEqual(received, expected);
 }
 const checkoutLimit = new Map();
-
-const quiz = {
-  id: "recognition-pattern",
-  title: "How Do You Seek Recognition?",
-  currency: "hkd",
-  amount: 2000,
-  questions: [
-    "I notice quickly when my contribution to a group goes unrecognised.",
-    "I feel most comfortable when I can shape how a shared plan unfolds.",
-    "Being misunderstood can make me withdraw rather than explain myself.",
-    "I enjoy being seen as someone with unusually strong taste, ability, or insight.",
-    "I find it difficult to let others make an important decision when I think I could do it better.",
-    "I protect my image carefully when I feel exposed or criticised.",
-    "Praise motivates me more than I usually admit.",
-    "I often take charge because waiting for others feels inefficient.",
-    "I can become guarded when someone gets emotionally close to me.",
-    "I care about making an impression, even when I tell myself I do not.",
-    "I feel uneasy when someone else becomes the centre of attention in an area I value.",
-    "I prefer to reveal my softer side only when I know it will be handled well."
-  ]
-};
-
-const profiles = [
-  { key: "spotlight", label: "Visible Achiever", indexes: [0, 3, 6, 9], strength: "You notice where your contributions can make a difference.", blindSpot: "Being seen can start to feel like the measure of your value.", prompt: "Where could you offer your ability without needing it to prove anything?" },
-  { key: "control", label: "Quiet Director", indexes: [1, 4, 7, 10], strength: "You bring structure and momentum when things feel uncertain.", blindSpot: "Taking charge can make shared responsibility harder to trust.", prompt: "What might become possible if you left room for someone else to lead?" },
-  { key: "guarded", label: "Protected Core", indexes: [2, 5, 8, 11], strength: "You are discerning about what and whom you let close.", blindSpot: "Protecting yourself can make genuine closeness feel more risky than it is.", prompt: "What would a small, safe act of openness look like today?" }
-];
 
 function hash(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -146,14 +117,6 @@ function quizForPurchase(purchase) {
   return getQuizByIdAndVersion(quizId, quizVersion);
 }
 
-function accessQuestions(quiz) {
-  return quiz.questions.map((question) => ({
-    id: question.id,
-    text: question.text,
-    options: question.options.map((option) => ({ id: option.id, text: option.text }))
-  }));
-}
-
 function previewSessionFor(request, quiz) {
   const token = cookies(request).quiz_preview;
   if (!token) return null;
@@ -172,12 +135,13 @@ function productAccessPayload(purchase) {
   const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
   const adaptive = isAdaptiveQuiz(product);
   const completedAnswers = Array.isArray(purchase.completedAnswers) ? purchase.completedAnswers : null;
-  const completed = completedAnswers ? evaluateQuiz(product, completedAnswers) : null;
+  const completed = purchase.v31Result ? { result: purchase.v31Result } : (completedAnswers ? evaluateQuiz(product, completedAnswers).completed : null);
   return {
     quiz: { id: product.id, slug: product.slug, version: product.version, title: product.metadata.title, questionRange: product.metadata.questionRange || null },
-    questions: adaptive ? [] : accessQuestions(product),
+    questions: [],
     previewAnswerCount: previewAnswers.length,
     previewAnswers: adaptive ? previewAnswers : undefined,
+    resumeAnswers: adaptive ? (purchase.v31Session?.answers || previewAnswers) : undefined,
     adaptive,
     expiresAt: purchase.expiresAt,
     completed
@@ -221,12 +185,6 @@ async function sendProductAccessEmail(purchase, token) {
   });
   if (!response.ok) throw new Error("Email delivery failed");
 }
-function scoresFor(answers) {
-  const scores = Object.fromEntries(profiles.map((profile) => [profile.key, profile.indexes.reduce((sum, index) => sum + answers[index], 0)]));
-  const leading = [...profiles].sort((a, b) => scores[b.key] - scores[a.key])[0];
-  return { scores, result: { label: leading.label, strength: leading.strength, blindSpot: leading.blindSpot, prompt: leading.prompt } };
-}
-
 function stripeConfigured() {
   return Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
 }
@@ -246,40 +204,6 @@ function verifyStripeSignature(body, signature) {
     const received = Buffer.from(value, "utf8");
     return expected.length === received.length && crypto.timingSafeEqual(expected, received);
   });
-}
-
-async function sendAccessEmail(purchase, token) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.MAIL_FROM;
-  if (!apiKey || !from) throw new Error("Email delivery is not configured");
-  const link = appOrigin + "/access/" + encodeURIComponent(token);
-  const logo = "cid:quizzes-it-arch";
-  const html = [
-    '<!doctype html><html><body style="margin:0;background:#faf9f6;color:#161515;font-family:Arial,Helvetica,sans-serif;">',
-    '<div style="max-width:560px;margin:0 auto;padding:56px 32px 48px;">',
-    '<div style="text-align:center;margin-bottom:38px;"><img src="' + logo + '" width="82" height="82" alt="Quizzes it" style="display:inline-block;width:82px;height:82px;object-fit:contain;"><div style="margin-top:12px;font-size:13px;font-weight:700;letter-spacing:3px;">QUIZZES IT</div></div>',
-    '<h1 style="margin:0 0 22px;font-size:32px;line-height:1.15;font-weight:700;letter-spacing:-.6px;">Your private quiz is ready.</h1>',
-    '<p style="margin:0 0 18px;font-size:17px;line-height:1.6;">Thank you for your purchase. Your personal access link is ready for <strong>How Do You Seek Recognition?</strong>.</p>',
-    '<p style="margin:0 0 28px;font-size:16px;line-height:1.6;">Take your time. There are 12 questions, and you can retake the quiz while your access is active.</p>',
-    '<p style="margin:0 0 30px;"><a href="' + link + '" style="display:inline-block;background:#141414;color:#ffffff;text-decoration:none;padding:15px 22px;border-radius:8px;font-size:16px;font-weight:700;">Start your private quiz &rarr;</a></p>',
-    '<div style="border-top:1px solid #ddd8d0;padding-top:22px;margin-top:4px;"><p style="margin:0;font-size:14px;line-height:1.55;color:#5d5954;"><strong style="color:#161515;">Private access:</strong> This link is personal to you and expires in 7 days. No account is needed.</p></div>',
-    '<p style="margin:32px 0 0;font-size:14px;line-height:1.55;color:#5d5954;">Need help with your link? Reply to this email and we will help.</p>',
-    '<p style="margin:34px 0 0;font-size:15px;line-height:1.55;">Warmly,<br><strong>Quizzes it</strong></p>',
-    '</div></body></html>'
-  ].join("");
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: from.includes("<") ? from : "Quizzes it <" + from + ">",
-      to: [purchase.email],
-      subject: "Your Quizzes it access link",
-      html: html,
-      attachments: [{ content: fs.readFileSync("/app/public/brand-arch.png").toString("base64"), filename: "quizzes-it-arch.png", content_id: "quizzes-it-arch" }],
-      text: "Your private quiz is ready.\n\nThank you for your purchase. Your access link is ready for How Do You Seek Recognition?\n\nOpen your quiz:\n" + link + "\n\nThis personal link expires in 7 days. No account is needed.\n\nNeed help? Reply to this email.\n\nQuizzes it"
-    })
-  });
-  if (!response.ok) throw new Error("Email delivery failed");
 }
 
 async function createCheckout(email) {
@@ -425,8 +349,7 @@ const server = http.createServer(async (request, response) => {
       ? sendJson(response, 200, product)
       : sendJson(response, 404, { error: "Quiz not found" });
   }
-    if (request.method === "GET" && url.pathname === "/api/quiz") return sendJson(response, 200, { id: quiz.id, title: quiz.title, price: quiz.amount, currency: quiz.currency, questions: quiz.questions });
-    const previewMatch = url.pathname.match(/^\/api\/quizzes\/([a-z0-9-]+)\/preview$/);
+        const previewMatch = url.pathname.match(/^\/api\/quizzes\/([a-z0-9-]+)\/preview$/);
     if (request.method === "GET" && previewMatch) {
       const product = getQuizBySlug(previewMatch[1]);
       if (!product || product.status !== "live" || (!isAdaptiveQuiz(product) && !product.preview?.enabled)) return sendJson(response, 404, { error: "Preview not found" });
@@ -482,6 +405,11 @@ const server = http.createServer(async (request, response) => {
     const savedPreview = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
     if (!body.retake && JSON.stringify(answers.slice(0, savedPreview.length)) !== JSON.stringify(savedPreview)) return sendJson(response, 400, { error: "Preview answers do not match this access link" });
     const next = nextAdaptiveQuestion(product, answers);
+    purchase.v31Session = { ...next.state, updatedAt: new Date().toISOString() };
+    const sessionStore = readStore();
+    const sessionIndex = sessionStore.purchases.findIndex((item) => item.id === purchase.id);
+    if (sessionIndex >= 0) sessionStore.purchases[sessionIndex] = purchase;
+    writeStore(sessionStore);
     return sendJson(response, 200, { complete: !next.question, reason: next.reason, question: next.question ? { id: next.question.id, text: next.question.text, options: next.question.options.map((option) => ({ id: option.id, text: option.text })) } : null });
   }
   const resultMatch = url.pathname.match(/^\/api\/access\/([^/]+)\/result$/);
@@ -498,7 +426,10 @@ const server = http.createServer(async (request, response) => {
       if (!isRetake && !isAdaptiveQuiz(product) && previewAnswers.length && Array.isArray(body.answers) && body.answers.length === product.questions.length - previewAnswers.length) answers = [...previewAnswers, ...body.answers];
       const outcome = evaluateQuiz(product, answers);
       purchase.completedAnswers = answers;
-      purchase.completedAt = new Date().toISOString();
+      purchase.v31Session = outcome.state;
+    purchase.v31Result = outcome.completed.result;
+    purchase.resultEmailStatus = "disabled";
+    purchase.completedAt = new Date().toISOString();
       purchase.retakeCount = isRetake ? Number(purchase.retakeCount || 0) + 1 : Number(purchase.retakeCount || 0);
       const store = readStore();
       const index = store.purchases.findIndex((item) => item.id === purchase.id);

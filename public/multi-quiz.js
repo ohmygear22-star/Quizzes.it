@@ -143,7 +143,7 @@
     }
   }
   async function adaptiveAccess(token, data, mode) {
-    const answers = mode === "retake" ? [] : [...(data.previewAnswers || [])];
+    const answers = mode === "retake" ? [] : [...(data.resumeAnswers || data.previewAnswers || [])];
  let requestInFlight = false;
  async function ask() {
  if (requestInFlight) return;
@@ -153,7 +153,7 @@
       if (step.complete) {
         const result = await getJson("/api/access/" + encodeURIComponent(token) + "/result", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers, retake: mode === "retake" }) });
         track("full_quiz_completed", { quizId: data.quiz.id, retake: mode === "retake" });
-        return fullResult({ completed: result, expiresAt: data.expiresAt }, token);
+        return fullResult({ completed: result.completed, expiresAt: data.expiresAt, quiz: data.quiz }, token);
       }
       const question = step.question;
       const previewCount = mode === "retake" ? 0 : (data.previewAnswers || []).length;
@@ -171,24 +171,15 @@
   function fullResult(data, token, confirmingRetake = false) {
     track("result_viewed");
     const result = data.completed.result;
-    const customer = result.customerPerspective;
-    const analysis = result.analyticalPerspective;
-    const layers = result.layers || null;
-    const layersHtml = layers ? '<div class="card"><h2>Your story</h2><p>' + escapeHtml(layers.story) + '</p></div><div class="card"><h2>The uncomfortable interpretation</h2><p>' + escapeHtml(layers.uncomfortableInterpretation) + '</p></div><div class="card"><h2>What could make this interpretation wrong</h2><p>' + escapeHtml(layers.whatCouldMakeThisWrong) + '</p></div><div class="card"><h2>What to watch next</h2><p>' + escapeHtml(layers.watchNext) + '</p></div>' : '';
-    const expiry = escapeHtml(new Date(data.expiresAt).toLocaleString());
-    window.multiQuizRetake = () => {
-      track("retake_confirmation_viewed");
-      fullResult(data, token, true);
-    };
-    window.multiQuizCancelRetake = () => fullResult(data, token, false);
-    window.multiQuizConfirmRetake = () => access(token, "retake");
-    const retakePanel = confirmingRetake
-      ? '<div class="card"><p class="ey">RETAKE THIS QUIZ</p><h2>Ready to retake?</h2><p>You will answer the full quiz again. Your current result remains available through this private link until you complete the new one.</p><div class="answers"><button class="primary" type="button" onclick="window.multiQuizConfirmRetake()">Start full retake →</button><button class="back" type="button" onclick="window.multiQuizCancelRetake()">Keep reading</button></div></div>'
-      : '<div class="card"><p class="ey">RETAKE THIS QUIZ</p><h2>See what changes when you answer again.</h2><p>Retake the full quiz while this private link is active. Your newest completed result will replace the current one.</p><button class="primary" type="button" onclick="window.multiQuizRetake()">Retake quiz →</button></div>';
-    render('<section class="page"><p class="ey">PRIVATE RESULT</p><p class="micro">Your private link is active until ' + expiry + '.</p><h1>' + escapeHtml(customer.title) + '</h1><p class="lead">' + escapeHtml(customer.summary) + '</p><div class="card"><h2>Your reflection</h2><p><strong>What you bring</strong><br>' + escapeHtml(customer.strength) + '</p><p><strong>What may be harder to notice</strong><br>' + escapeHtml(customer.blindSpot) + '</p><p>' + escapeHtml(customer.reflection) + '</p></div><div class="card"><h2>The pattern I noticed</h2><p><strong>' + escapeHtml(analysis.pattern) + '</strong></p><p>' + escapeHtml(analysis.evidence) + '</p></div><div class="card"><h2>Read with care</h2><p>' + escapeHtml(analysis.caveats) + '</p></div>' + layersHtml + retakePanel + '<p class="micro">This is a private self-reflection result, not a diagnosis or a fixed verdict.</p></section>');
+    if (result && Array.isArray(result.phases)) {
+    const phaseCards = result.phases.map((phase) => '<div class="card"><p class="ey">' + escapeHtml(phase.title || phase.name || phase.id || "Result phase") + '</p><p>' + escapeHtml(phase.content || phase.body || phase.text || "") + '</p></div>').join("");
+    const evidenceCards = (result.evidenceMoments || []).map((moment) => '<li>' + escapeHtml(moment.questionText || moment.question || moment.text || "") + '</li>').join("");
+    render('<section class="page"><p class="ey">PRIVATE V3.1 RESULT</p><p class="micro">' + escapeHtml(data.quiz?.title || "") + ' · ' + escapeHtml(result.primary || "") + (result.secondary ? ' + ' + escapeHtml(result.secondary) : "") + ' · lead margin ' + escapeHtml(String(result.leadMargin ?? "")) + '</p><h1>' + escapeHtml(result.phases[0]?.content || result.phases[0]?.body || "Your result") + '</h1><p class="lead">' + escapeHtml(result.confidence?.state || result.confidence?.label || result.confidence?.wording || result.confidence || (result.mixedProfile ? "Mixed profile" : "Developing pattern")) + '</p><div class="cards">' + phaseCards + '</div><div class="card"><h2>Evidence from your answers</h2><ul>' + evidenceCards + '</ul></div><p class="micro">This is a private self-reflection result, not a diagnosis.</p></section>');
+    return;
   }
-
-  function route() {
+  render("<section class=\"page\"><h1>This result is unavailable.</h1><p class=\"lead\">The saved V3.1 result could not be read.</p></section>");
+ }
+ function route() {
     const path = location.pathname;
     const hash = location.hash.slice(1);
     if (path.startsWith("/access/") && hash) { location.replace("/#" + hash); return; }
