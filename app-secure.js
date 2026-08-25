@@ -3,7 +3,8 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes } from "./quizzes/index.js";
-import { evaluatePreview, evaluateQuiz, previewQuestions } from "./quiz-engine.js";
+import { evaluatePreview, evaluateQuiz, isAdaptiveQuiz, previewQuestions } from "./quiz-engine.js";
+import { nextAdaptiveQuestion } from "./adaptive-quiz-engine.js";
 
 const port = Number(process.env.PORT || 3000);
 const dataDir = process.env.DATA_DIR || "/data";
@@ -169,17 +170,19 @@ function productAccessPayload(purchase) {
   const product = quizForPurchase(purchase);
   if (!product) return null;
   const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
+  const adaptive = isAdaptiveQuiz(product);
   const completedAnswers = Array.isArray(purchase.completedAnswers) ? purchase.completedAnswers : null;
   const completed = completedAnswers ? evaluateQuiz(product, completedAnswers) : null;
   return {
-    quiz: { id: product.id, slug: product.slug, version: product.version, title: product.metadata.title },
-    questions: accessQuestions(product),
+    quiz: { id: product.id, slug: product.slug, version: product.version, title: product.metadata.title, questionRange: product.metadata.questionRange || null },
+    questions: adaptive ? [] : accessQuestions(product),
     previewAnswerCount: previewAnswers.length,
+    previewAnswers: adaptive ? previewAnswers : undefined,
+    adaptive,
     expiresAt: purchase.expiresAt,
     completed
   };
 }
-
 async function sendProductAccessEmail(purchase, token) {
   const product = quizForPurchase(purchase);
   if (!product) throw new Error("Purchased quiz version is unavailable");
@@ -426,12 +429,12 @@ const server = http.createServer(async (request, response) => {
     const previewMatch = url.pathname.match(/^\/api\/quizzes\/([a-z0-9-]+)\/preview$/);
     if (request.method === "GET" && previewMatch) {
       const product = getQuizBySlug(previewMatch[1]);
-      if (!product || product.status !== "live" || !product.preview?.enabled) return sendJson(response, 404, { error: "Preview not found" });
-      return sendJson(response, 200, { title: product.metadata.title, questions: previewQuestions(product).map((question) => ({ id: question.id, text: question.text, options: question.options.map((option) => ({ id: option.id, text: option.text })) })) });
+      if (!product || product.status !== "live" || (!isAdaptiveQuiz(product) && !product.preview?.enabled)) return sendJson(response, 404, { error: "Preview not found" });
+      return sendJson(response, 200, { title: product.metadata.title, adaptive: isAdaptiveQuiz(product), questionRange: product.metadata.questionRange || null, questions: previewQuestions(product).map((question) => ({ id: question.id, text: question.text, options: question.options.map((option) => ({ id: option.id, text: option.text })) })) });
     }
     if (request.method === "POST" && previewMatch) {
       const product = getQuizBySlug(previewMatch[1]);
-      if (!product || product.status !== "live" || !product.preview?.enabled) return sendJson(response, 404, { error: "Preview not found" });
+      if (!product || product.status !== "live" || (!isAdaptiveQuiz(product) && !product.preview?.enabled)) return sendJson(response, 404, { error: "Preview not found" });
       const body = JSON.parse((await readBody(request)).toString("utf8"));
       const teaser = evaluatePreview(product, body.answers);
       const token = crypto.randomBytes(32).toString("base64url");
@@ -468,7 +471,20 @@ const server = http.createServer(async (request, response) => {
       if (!payload) return sendJson(response, 410, { error: "This quiz version is unavailable" });
       return sendJson(response, 200, payload);
     }
-    const resultMatch = url.pathname.match(/^\/api\/access\/([^/]+)\/result$/);
+    const nextMatch = url.pathname.match(/^\/api\/access\/([^/]+)\/next$/);
+  if (request.method === "POST" && nextMatch) {
+    const purchase = accessPurchase(nextMatch[1]);
+    if (!purchase) return sendJson(response, 404, { error: "This link is unavailable or has expired" });
+    const product = quizForPurchase(purchase);
+    if (!product || !isAdaptiveQuiz(product)) return sendJson(response, 404, { error: "An adaptive quiz is not available" });
+    const body = JSON.parse((await readBody(request)).toString("utf8"));
+    const answers = Array.isArray(body.answers) ? body.answers : [];
+    const savedPreview = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
+    if (!body.retake && JSON.stringify(answers.slice(0, savedPreview.length)) !== JSON.stringify(savedPreview)) return sendJson(response, 400, { error: "Preview answers do not match this access link" });
+    const next = nextAdaptiveQuestion(product, answers);
+    return sendJson(response, 200, { complete: !next.question, reason: next.reason, question: next.question ? { id: next.question.id, text: next.question.text, options: next.question.options.map((option) => ({ id: option.id, text: option.text })) } : null });
+  }
+  const resultMatch = url.pathname.match(/^\/api\/access\/([^/]+)\/result$/);
     if (request.method === "POST" && resultMatch) {
       const purchase = accessPurchase(resultMatch[1]);
       if (!purchase) return sendJson(response, 404, { error: "This link is unavailable or has expired" });
@@ -476,11 +492,14 @@ const server = http.createServer(async (request, response) => {
       if (!product) return sendJson(response, 410, { error: "This quiz version is unavailable" });
       const body = JSON.parse((await readBody(request)).toString("utf8"));
       const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
+      const isRetake = body.retake === true;
       let answers = body.answers;
-      if (previewAnswers.length && Array.isArray(body.answers) && body.answers.length === product.questions.length - previewAnswers.length) answers = [...previewAnswers, ...body.answers];
+      if (!isRetake && isAdaptiveQuiz(product) && JSON.stringify((Array.isArray(answers) ? answers : []).slice(0, previewAnswers.length)) !== JSON.stringify(previewAnswers)) return sendJson(response, 400, { error: "Preview answers do not match this access link" });
+      if (!isRetake && !isAdaptiveQuiz(product) && previewAnswers.length && Array.isArray(body.answers) && body.answers.length === product.questions.length - previewAnswers.length) answers = [...previewAnswers, ...body.answers];
       const outcome = evaluateQuiz(product, answers);
       purchase.completedAnswers = answers;
       purchase.completedAt = new Date().toISOString();
+      purchase.retakeCount = isRetake ? Number(purchase.retakeCount || 0) + 1 : Number(purchase.retakeCount || 0);
       const store = readStore();
       const index = store.purchases.findIndex((item) => item.id === purchase.id);
       if (index >= 0) store.purchases[index] = purchase;

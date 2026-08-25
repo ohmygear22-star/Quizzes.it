@@ -5,6 +5,7 @@ COPY public ./public
 
 COPY app-secure.js ./
 COPY quiz-engine.js ./
+COPY adaptive-quiz-engine.js ./
 COPY quizzes ./quizzes
 
 RUN mkdir -p /data && chown node:node /data

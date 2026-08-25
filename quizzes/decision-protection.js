@@ -3,7 +3,7 @@ const options = [
 ];
 const question = (id, text) => ({ id, text, options });
 export default {
-  id: "decision-protection", slug: "what-do-you-need-a-decision-to-protect", version: 1, status: "live",
+  id: "decision-protection", slug: "what-do-you-need-a-decision-to-protect", version: 1, status: "retired",
   metadata: { title: "What Do You Need a Decision to Protect?", description: "Explore the hidden demand you place on a meaningful choice.", category: "decision-self-reflection", targetCustomer: "Adults reflecting on a meaningful personal or professional choice", durationMinutes: 3, accessDays: 7 },
   preview: { enabled: true, questionIds: ["decision-protection-01", "decision-protection-02", "decision-protection-03", "decision-protection-04", "decision-protection-05"], teaser: {
     heading: "What your first answers suggest",

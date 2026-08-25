@@ -3,7 +3,7 @@ const options = [
 ];
 const question = (id, text) => ({ id, text, options });
 export default {
-  id: "recognition-pattern", slug: "how-do-you-seek-recognition", version: 1, status: "live",
+  id: "recognition-pattern", slug: "how-do-you-seek-recognition", version: 1, status: "retired",
   metadata: { title: "How Do You Seek Recognition?", description: "Explore the instinct beneath validation, attention and vulnerability.", category: "self-discovery", targetCustomer: "Adults seeking a private self-reflection experience", durationMinutes: 3, accessDays: 7 },
   preview: {
     enabled: true,
