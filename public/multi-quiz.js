@@ -32,7 +32,7 @@
       const rows = quizzes.map((quiz, index) => {
         const meta = quiz.metadata;
         const offer = quiz.offers[0];
-        return '<article class="row"><small>' + String(index + 1).padStart(2, "0") + '</small><div><h2>' + escapeHtml(meta.title) + '</h2><p>' + escapeHtml(meta.description) + '</p></div><button class="primary" onclick="window.multiQuizGo(\'quiz/' + escapeHtml(quiz.slug) + '\')">View quiz →</button></article>';
+        return '<article class="row"><small>' + String(index + 1).padStart(2, "0") + '</small><div><h2>' + escapeHtml(meta.title) + '</h2><p>' + escapeHtml(meta.description) + '</p><small class="catalogue-meta">5 free questions · ' + escapeHtml(quiz.flow?.questionRange || meta.questionRange || "Adaptive questions") + '</small></div><button class="primary" onclick="window.multiQuizGo(\'quiz/' + escapeHtml(quiz.slug) + '\')">View quiz →</button></article>';
       }).join("");
       render('<section class="page"><p class="ey">ALL QUIZZES</p><h1>Find the question that follows you around.</h1><p class="lead catalogue-offer">Start free · 5 preview questions · full analysis HK$29.00</p><div class="list">' + rows + "</div></section>");
     } catch (error) {
@@ -63,7 +63,7 @@
       function ask(index) {
         const question = data.questions[index];
         const previous = index > 0 ? '<button type="button" class="back question-back" onclick="window.multiPreviewPrevious()">← Previous question</button>' : "";
-      render('<section class="page"><p class="ey">FREE PREVIEW · ' + (index + 1) + ' OF ' + data.questions.length + '</p><h1 class="question-title">' + escapeHtml(question.text) + '</h1><p class="lead">Go with your first instinct.</p><div class="answers">' + question.options.map((option) => '<button class="answer" onclick="window.multiPreviewPick(\'' + escapeHtml(option.id) + '\')">' + escapeHtml(option.text) + ' →</button>').join("") + "</div></section>");
+      render('<section class="page"><p class="ey">FREE PREVIEW · ' + (index + 1) + ' OF ' + data.questions.length + '</p><div class="progress" aria-label="Preview progress"><span style="width:' + (((index + 1) / data.questions.length) * 100) + '%"></span></div><h1 class="question-title">' + escapeHtml(question.text) + '</h1><p class="lead">Go with your first instinct.</p><div class="answers">' + question.options.map((option) => '<button class="answer" onclick="window.multiPreviewPick(\'' + escapeHtml(option.id) + '\')">' + escapeHtml(option.text) + ' →</button>').join("") + "</div></section>");
       }
       window.multiPreviewPrevious = () => { if (!answers.length) return; answers.pop(); ask(answers.length); };
     window.multiPreviewPick = async (optionId) => {
@@ -88,13 +88,13 @@
     track("paywall_viewed", { slug });
     const quiz = await getJson("/api/quizzes/" + encodeURIComponent(slug));
     const offer = quiz.offers[0];
-    render('<section class="page teaser-page"><p class="ey">YOUR EARLY INSIGHT</p><h1 class="teaser-title">Your answers point to something worth looking at.</h1><p class="lead">' + escapeHtml(insight.observation) + '</p><p class="teaser-curiosity">' + escapeHtml(insight.next) + '</p><button class="primary" onclick="window.multiQuizGo(\'checkout/' + escapeHtml(slug) + '\')">Continue to full analysis — ' + money(offer.amount, offer.currency) + ' →</button><p class="micro">Private link by email · available for 7 days.</p></section>');
+    render('<section class="page teaser-page"><p class="ey">EARLY SIGNAL — NOT YOUR FINAL RESULT</p><h1 class="teaser-title">There is more to see in your pattern.</h1><p class="lead">' + escapeHtml(insight.observation) + '</p><p class="teaser-curiosity">' + escapeHtml(insight.next) + '</p><button class="primary" onclick="window.multiQuizGo(\'checkout/' + escapeHtml(slug) + '\')">Unlock my full analysis — ' + money(offer.amount, offer.currency) + ' →</button><p class="micro">Private link by email · available for 7 days.</p></section>');
   }
 
   async function checkout(slug) {
     const quiz = await getJson("/api/quizzes/" + encodeURIComponent(slug));
     const offer = quiz.offers[0];
-    render('<section class="page"><p class="ey">UNLOCK FULL ANALYSIS — ' + money(offer.amount, offer.currency) + '</p><h1>Continue from where you left off.</h1><p class="lead">Your first preview answers are preserved. After payment, we will email your private link to continue the remaining questions and return to your result for seven days.</p><form class="form" id="checkout-form"><label for="checkout-email">Email for your private access link</label><input id="checkout-email" type="email" autocomplete="email" placeholder="you@example.com" required><button class="primary">Continue to secure payment →</button><p class="micro" id="checkout-status" role="alert"></p></form></section>');
+    render('<section class="page"><p class="ey">UNLOCK FULL ANALYSIS — ' + money(offer.amount, offer.currency) + '</p><h1>Continue from where you left off.</h1><p class="lead">Your preview answers are saved. After payment, your private email link resumes the adaptive questions and keeps your completed reflection available for seven days.</p><form class="form" id="checkout-form" novalidate><label for="checkout-email">Email for your private access link</label><input id="checkout-email" type="email" autocomplete="email" placeholder="you@example.com" required><button class="primary">Continue to secure payment →</button><p class="micro" id="checkout-status" role="alert"></p></form></section>');
     document.getElementById("checkout-form").onsubmit = async (event) => {
       event.preventDefault();
       const status = document.getElementById("checkout-status");
@@ -158,7 +158,7 @@
       const question = step.question;
       const previewCount = mode === "retake" ? 0 : (data.previewAnswers || []).length;
       const previous = answers.length > previewCount ? '<button type="button" class="back question-back" onclick="window.multiAdaptivePrevious()">← Previous question</button>' : "";
-      render('<section class="page"><p class="ey">ADAPTIVE QUIZ · '+ escapeHtml(data.quiz.questionRange || "15–20 questions") + '</p><h1 class="question-title">' + escapeHtml(question.text) + '</h1><p class="lead">Your next question follows what you have already told us.</p><div class="answers">' + question.options.map((option) => '<button class="answer" onclick="window.multiAdaptivePick(\'' + escapeHtml(option.id) + '\')">' + escapeHtml(option.text) + ' →</button>').join("") + "</div></section>");
+      render('<section class="page"><p class="ey">ADAPTIVE QUIZ · '+ escapeHtml(data.quiz.questionRange || "15–20 questions") + '</p><h1 class="question-title">' + escapeHtml(question.text) + '</h1><p class="lead">Your next question follows what you have already told us. You can go back before you continue.</p><div class="answers">' + question.options.map((option) => '<button class="answer" onclick="window.multiAdaptivePick(\'' + escapeHtml(option.id) + '\')">' + escapeHtml(option.text) + ' →</button>').join("") + "</div></section>");
       window.multiAdaptivePrevious = () => { if (requestInFlight || answers.length <= previewCount) return; answers.pop(); ask().catch((error) => render('<section class="page"><h1>We could not continue.</h1><p class="lead">' + escapeHtml(error.message) + "</p></section>")); };
       window.multiAdaptivePick = (optionId) => { if (requestInFlight) return; answers.push({ questionId: question.id, optionId }); ask().catch((error) => render('<section class="page"><h1>We could not continue.</h1><p class="lead">' + escapeHtml(error.message) + "</p></section>")); };
  } finally {
@@ -168,18 +168,27 @@
  try { await ask(); } catch (error) { render('<section class="page"><h1>This link is unavailable.</h1><p class="lead">' + escapeHtml(error.message) + "</p></section>"); }
   }
 
-  function fullResult(data, token, confirmingRetake = false) {
-    track("result_viewed");
-    const result = data.completed.result;
-    if (result && Array.isArray(result.phases)) {
-    const phaseCards = result.phases.map((phase) => '<div class="card"><p class="ey">' + escapeHtml(phase.title || phase.name || phase.id || "Result phase") + '</p><p>' + escapeHtml(phase.content || phase.body || phase.text || "") + '</p></div>').join("");
+  function fullResult(data, token) {
+  track("result_viewed");
+  const result = data.completed.result;
+  if (result && Array.isArray(result.phases)) {
+    const headline = result.phases[0]?.content || result.phases[0]?.body || "Your result";
+    const supportingPhases = result.phases.slice(1);
+    const phaseCards = supportingPhases.map((phase) => '<div class="card"><p class="ey">' + escapeHtml(phase.title || phase.name || phase.id || "Reflection") + '</p><p>' + escapeHtml(phase.content || phase.body || phase.text || "") + '</p></div>').join("");
     const evidenceCards = (result.evidenceMoments || []).map((moment) => '<li>' + escapeHtml(moment.questionText || moment.question || moment.text || "") + '</li>').join("");
-    render('<section class="page"><p class="ey">PRIVATE V3.1 RESULT</p><p class="micro">' + escapeHtml(data.quiz?.title || "") + ' · ' + escapeHtml(result.primary || "") + (result.secondary ? ' + ' + escapeHtml(result.secondary) : "") + ' · lead margin ' + escapeHtml(String(result.leadMargin ?? "")) + '</p><h1>' + escapeHtml(result.phases[0]?.content || result.phases[0]?.body || "Your result") + '</h1><p class="lead">' + escapeHtml(result.confidence?.state || result.confidence?.label || result.confidence?.wording || result.confidence || (result.mixedProfile ? "Mixed profile" : "Developing pattern")) + '</p><div class="cards">' + phaseCards + '</div><div class="card"><h2>Evidence from your answers</h2><ul>' + evidenceCards + '</ul></div><p class="micro">This is a private self-reflection result, not a diagnosis.</p></section>');
+    const confidence = result.confidence?.state || result.confidence?.label || result.confidence?.wording || result.confidence || (result.mixedProfile ? "A mixed pattern is emerging." : "A pattern is taking shape.");
+    const availability = data.expiresAt ? "This private result remains available for seven days from purchase." : "Keep this link private so you can return when you are ready.";
+    window.multiQuizRetake = () => render('<section class="page"><p class="ey">RETAKE YOUR QUIZ</p><h1>Start a fresh reflection?</h1><p class="lead">A retake will replace the saved result for this private link.</p><div class="result-actions"><button type="button" class="back" onclick="window.multiQuizReturnToResult()">Keep this result</button><button type="button" class="primary" onclick="window.multiQuizConfirmRetake()">Start retake</button></div></section>');
+    window.multiQuizReturnToResult = () => fullResult(data, token);
+    window.multiQuizConfirmRetake = () => access(token, "retake");
+    const retakeControl = token ? '<button type="button" class="secondary" onclick="window.multiQuizRetake()">Retake this quiz</button>' : "";
+    render('<section class="page result-page"><p class="ey">YOUR PRIVATE REFLECTION</p><p class="micro">' + escapeHtml(data.quiz?.title || "") + '</p><h1>' + escapeHtml(headline) + '</h1><p class="lead">' + escapeHtml(confidence) + '</p><div class="cards">' + phaseCards + '</div><section class="card evidence-card"><p class="ey">YOUR PATTERN, IN CONTEXT</p><h2>Questions that shaped your reflection</h2><ul>' + evidenceCards + '</ul></section><section class="card result-next"><p>' + escapeHtml(availability) + '</p><div class="result-actions">' + retakeControl + '</div></section><p class="micro">This is a private self-reflection result, not a diagnosis.</p></section>');
     return;
   }
-  render("<section class=\"page\"><h1>This result is unavailable.</h1><p class=\"lead\">The saved V3.1 result could not be read.</p></section>");
- }
- function route() {
+  render('<section class="page"><h1>This result is unavailable.</h1><p class="lead">The saved result could not be read.</p></section>');
+}
+
+function route() {
     const path = location.pathname;
     const hash = location.hash.slice(1);
     if (path.startsWith("/access/") && hash) { location.replace("/#" + hash); return; }

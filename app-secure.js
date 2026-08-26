@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes, evaluatePreview, evaluateQuiz, isAdaptiveQuiz, previewQuestions, nextAdaptiveQuestion } from "./v31/production-adapter.js";
+import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes, evaluatePreview, evaluateQuiz, isAdaptiveQuiz, isAssessmentComplete, previewQuestions, nextAdaptiveQuestion } from "./v31/production-adapter.js";
 
 const port = Number(process.env.PORT || 3000);
 const dataDir = process.env.DATA_DIR || "/data";
@@ -423,6 +423,7 @@ const server = http.createServer(async (request, response) => {
       const isRetake = body.retake === true;
       let answers = body.answers;
       if (!isRetake && isAdaptiveQuiz(product) && JSON.stringify((Array.isArray(answers) ? answers : []).slice(0, previewAnswers.length)) !== JSON.stringify(previewAnswers)) return sendJson(response, 400, { error: "Preview answers do not match this access link" });
+      if (isAdaptiveQuiz(product) && !isAssessmentComplete(product, answers)) return sendJson(response, 409, { error: "Continue answering the adaptive questions before viewing your result" });
       if (!isRetake && !isAdaptiveQuiz(product) && previewAnswers.length && Array.isArray(body.answers) && body.answers.length === product.questions.length - previewAnswers.length) answers = [...previewAnswers, ...body.answers];
       const outcome = evaluateQuiz(product, answers);
       purchase.completedAnswers = answers;
