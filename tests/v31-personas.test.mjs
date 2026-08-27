@@ -51,12 +51,12 @@ function simulate(quiz, persona) {
   };
 }
 
-test("all 15 authoritative personas run deterministically with source immutable", () => {
+test("all 55 authoritative personas run deterministically with source immutable", () => {
   const before = JSON.stringify(quizzes);
   const report = quizzes.flatMap((quiz) => quiz.qaPersonas.map((persona) => simulate(quiz, persona)));
   fs.mkdirSync(new URL("./output/", import.meta.url), { recursive: true });
   fs.writeFileSync(new URL("./output/v31-persona-report.json", import.meta.url), JSON.stringify({ sourceVersion: "3.1", personas: report }, null, 2));
-  assert.equal(report.length, 15);
+  assert.equal(report.length, 55);
   assert.equal(report.every((item) => item.evidenceIntegrity), true);
   assert.equal(report.every((item) => item.questionCount <= byId(item.quiz).stopping.maxTotal), true);
   assert.equal(JSON.stringify(quizzes), before);
@@ -65,7 +65,7 @@ const byId = (id) => quizzes.find((quiz) => quiz.id === id);
 
 test("persona report preserves every authoritative intent row", () => {
   const report = JSON.parse(fs.readFileSync(new URL("./output/v31-persona-report.json", import.meta.url))).personas;
-  assert.equal(report.length, 15);
-  assert.equal(new Set(report.map((item) => item.quiz + "/" + item.persona)).size, 15);
+  assert.equal(report.length, 55);
+  assert.equal(new Set(report.map((item) => item.quiz + "/" + item.persona)).size, 55);
 });
 

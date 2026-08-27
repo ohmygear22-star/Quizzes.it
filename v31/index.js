@@ -1,6 +1,15 @@
 import rel01 from "./quizzes/rel01.js";
 import rel05 from "./quizzes/rel05.js";
 import rel02 from "./quizzes/rel02.js";
-export const quizzes = [rel01, rel05, rel02];
+import rel06 from "./quizzes/rel06.js";
+import rel07 from "./quizzes/rel07.js";
+import rel08 from "./quizzes/rel08.js";
+import rel09 from "./quizzes/rel09.js";
+import rel10 from "./quizzes/rel10.js";
+import rel11 from "./quizzes/rel11.js";
+import rel12 from "./quizzes/rel12.js";
+import rel13 from "./quizzes/rel13.js";
+import { publicationFor } from "./publication.js";
+export const quizzes = [rel01, rel05, rel02, rel06, rel07, rel08, rel09, rel10, rel11, rel12, rel13].map((quiz) => ({ ...quiz, publication: publicationFor(quiz) }));
 export const byId = new Map(quizzes.map((quiz) => [quiz.id, quiz]));
 export { selectNextQuestion } from "./selector.js";

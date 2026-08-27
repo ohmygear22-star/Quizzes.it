@@ -13,9 +13,9 @@ const completed = (quiz, { primary = "H1", secondary = "H2", margin = 4, mixedPr
   return buildResult({ quiz, answers, scores, primary, secondary, leadMargin: margin, mixedProfile, locale, completion: { shouldStop: true, reason: "criteria-met" } });
 };
 
-test("the fixed source exposes exactly 12 complete bilingual primary blueprints", () => {
+test("the fixed source exposes exactly 44 complete bilingual primary blueprints", () => {
   const required = ["Primary", "Headline EN", "Headline中文", "We're With You EN", "站在你這邊中文", "Deeper Pattern EN", "更深層模式中文", "Professional View EN", "專業／現實角度中文", "Evidence Guidance EN", "答案證據指引中文", "Real-Life Examples EN", "現實生活例子中文", "Watch / Try Next EN", "接下來留意／嘗試中文", "Clear Wording EN", "清晰結果措辭中文", "Developing Wording EN", "發展中結果措辭中文", "Mixed Wording EN", "混合結果措辭中文", "Evidence Selection EN", "證據選取規則中文", "Safety Boundary EN", "安全措辭中文", "Secondary H1 EN", "次要H1中文", "Secondary H2 EN", "次要H2中文", "Secondary H3 EN", "次要H3中文", "Secondary H4 EN", "次要H4中文"];
-  assert.equal(quizzes.reduce((total, quiz) => total + quiz.resultBlueprints.length, 0), 12);
+  assert.equal(quizzes.reduce((total, quiz) => total + quiz.resultBlueprints.length, 0), 44);
   for (const quiz of quizzes) for (const blueprint of quiz.resultBlueprints) {
     assert.ok(["H1", "H2", "H3", "H4"].includes(blueprint.Primary));
     for (const field of required) assert.notEqual(String(fieldValue(blueprint, field) ?? "").trim(), "", quiz.id + "/" + blueprint.Primary + " missing " + field);

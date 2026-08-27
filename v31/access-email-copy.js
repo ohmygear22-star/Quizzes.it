@@ -1,0 +1,5 @@
+export const accessEmailCopy = Object.freeze({
+  en: { lang: "en", subject: "Your Quizzes it access link", heading: "Your private quiz is ready.", purchased: "Thank you for your purchase. Your personal access link is ready for", continuationSaved: "Your first preview answers are saved, so you will continue from the remaining questions.", continuationFresh: "Take your time. You can return to your quiz while your access is active.", cta: "Continue your private quiz →", privateLabel: "Private access:", privateText: "This link is personal to you and expires in 7 days. No account is needed.", help: "Need help with your link? Reply to this email and we will help.", closing: "Warmly," },
+  "zh-Hant": { lang: "zh-Hant", subject: "你的 Quizzes it 測驗連結", heading: "你的私人測驗已準備好。", purchased: "謝謝你的購買。以下是你的個人測驗連結：", continuationSaved: "你剛才的預覽答案已儲存，接下來會從剩餘問題繼續。", continuationFresh: "慢慢來。連結有效期間，你可以隨時回到測驗。", cta: "繼續私人測驗 →", privateLabel: "私人存取：", privateText: "這個連結只屬於你，並會在 7 天後失效。不需要建立帳戶。", help: "需要協助嗎？直接回覆這封電郵，我們會幫助你。", closing: "祝好，" }
+});
+export function getAccessEmailCopy(locale) { return accessEmailCopy[locale] || accessEmailCopy.en; }

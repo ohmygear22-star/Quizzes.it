@@ -22,6 +22,14 @@ test("each real quiz consumes its authoritative stopping configuration", () => {
     ["REL01", 20, 30, 5, 5, 3],
     ["REL05", 15, 18, 4, 4, 3],
     ["REL02", 20, 30, 5, 5, 3],
+    ["REL06", 20, 30, 5, 5, 3],
+    ["REL07", 20, 30, 5, 5, 3],
+    ["REL08", 20, 30, 5, 5, 3],
+    ["REL09", 20, 30, 5, 5, 3],
+    ["REL10", 15, 18, 4, 4, 3],
+    ["REL11", 15, 18, 4, 4, 3],
+    ["REL12", 15, 18, 4, 4, 3],
+    ["REL13", 15, 18, 4, 4, 3],
   ]);
 });
 
@@ -108,7 +116,7 @@ test("positive domains are unique and a counter-evidence answer does not erase a
 });
 
 test("real maximums stop regardless of gates and classify mixed profiles from margin", () => {
-  const expected = [["REL01", 30], ["REL05", 18], ["REL02", 30]];
+  const expected = [["REL01", 30], ["REL05", 18], ["REL02", 30], ["REL06", 30], ["REL07", 30], ["REL08", 30], ["REL09", 30], ["REL10", 18], ["REL11", 18], ["REL12", 18], ["REL13", 18]];
   for (const [id, maximum] of expected) {
     const quiz = quizzes.find((item) => item.id === id);
     const result = evaluateCompletion(quiz, { answers: answers(quiz, maximum), scores: { H1: 20, H2: 20, H3: 0, H4: 0 }, rankingHistory: [] });

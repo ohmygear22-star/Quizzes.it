@@ -2,7 +2,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes, evaluatePreview, evaluateQuiz, isAdaptiveQuiz, isAssessmentComplete, previewQuestions, nextAdaptiveQuestion } from "./v31/production-adapter.js";
+import { catalogVersion, defaultQuiz, getPublicQuizBySlug, getQuizByIdAndVersion, getQuizBySlug, listPublicQuizzes, evaluatePreview, evaluateQuiz, isAdaptiveQuiz, isAssessmentComplete, previewQuestions, nextAdaptiveQuestion } from "./v31/production-adapter.js";
+import { normaliseLocale } from "./v31/locale.js";
+import { getAccessEmailCopy } from "./v31/access-email-copy.js";
+const requestLocale = (value) => normaliseLocale(value) || "en";
 
 const port = Number(process.env.PORT || 3000);
 const dataDir = process.env.DATA_DIR || "/data";
@@ -20,6 +23,36 @@ const checkoutLimit = new Map();
 
 function hash(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+const emailDispatches = new Map();
+
+function accessTokenEncryptionKey() {
+  const encoded = process.env.PRIVATE_ACCESS_TOKEN_ENCRYPTION_KEY;
+  if (!encoded) throw new Error("Private access token encryption is not configured");
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) throw new Error("Private access token encryption key must be 32 bytes");
+  return key;
+}
+
+function encryptAccessToken(token, purchaseId) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", accessTokenEncryptionKey(), iv);
+  cipher.setAAD(Buffer.from(purchaseId, "utf8"));
+  const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  return {
+    iv: iv.toString("base64url"),
+    tag: cipher.getAuthTag().toString("base64url"),
+    ciphertext: ciphertext.toString("base64url")
+  };
+}
+
+function decryptAccessToken(envelope, purchaseId) {
+  if (!envelope || typeof envelope !== "object") throw new Error("Paid purchase has no recoverable private access token");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", accessTokenEncryptionKey(), Buffer.from(envelope.iv, "base64url"));
+  decipher.setAAD(Buffer.from(purchaseId, "utf8"));
+  decipher.setAuthTag(Buffer.from(envelope.tag, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(envelope.ciphertext, "base64url")), decipher.final()]).toString("utf8");
 }
 
 function readStore() {
@@ -135,7 +168,7 @@ function productAccessPayload(purchase) {
   const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
   const adaptive = isAdaptiveQuiz(product);
   const completedAnswers = Array.isArray(purchase.completedAnswers) ? purchase.completedAnswers : null;
-  const completed = purchase.v31Result ? { result: purchase.v31Result } : (completedAnswers ? evaluateQuiz(product, completedAnswers).completed : null);
+  const completed = purchase.v31Result ? { result: purchase.v31Result } : (completedAnswers ? evaluateQuiz(product, completedAnswers, requestLocale(purchase.locale)).completed : null);
   return {
     quiz: { id: product.id, slug: product.slug, version: product.version, title: product.metadata.title, questionRange: product.metadata.questionRange || null },
     questions: [],
@@ -154,23 +187,22 @@ async function sendProductAccessEmail(purchase, token) {
   const from = process.env.MAIL_FROM;
   if (!apiKey || !from) throw new Error("Email delivery is not configured");
   const link = appOrigin + "/access/" + encodeURIComponent(token);
+  const copy = getAccessEmailCopy(requestLocale(purchase.locale));
   const title = String(product.metadata.title).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  const continuation = Array.isArray(purchase.previewAnswers) && purchase.previewAnswers.length
-    ? "Your first preview answers are saved, so you will continue from the remaining questions."
-    : "Take your time. You can return to your quiz while your access is active.";
+  const continuation = Array.isArray(purchase.previewAnswers) && purchase.previewAnswers.length ? copy.continuationSaved : copy.continuationFresh;
   const html = '<!doctype html><html lang="en"><body style="margin:0;padding:0;background:#f5f4f2;color:#29282c;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f4f2;"><tr><td align="center" style="padding:40px 16px;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#ffffff;"><tr><td style="padding:52px 52px 46px;">' +
     '<p style="margin:0 0 34px;text-align:center;"><img src="' + appOrigin + '/brand-arch.png" width="68" height="68" alt="Quizzes it" style="display:inline-block;border:0;outline:0;text-decoration:none;"></p>' +
     '<p style="margin:0 0 52px;text-align:center;color:#29282c;font-size:13px;font-weight:700;letter-spacing:5px;">QUIZZES IT</p>' +
-    '<h1 style="margin:0 0 28px;color:#29282c;font-size:34px;line-height:1.2;font-weight:700;letter-spacing:-0.6px;">Your private quiz is ready.</h1>' +
-    '<p style="margin:0 0 20px;color:#3b3a3e;font-size:18px;line-height:1.55;">Thank you for your purchase. Your personal access link is ready for <strong>' + title + '</strong>.</p>' +
+    '<h1 style="margin:0 0 28px;color:#29282c;font-size:34px;line-height:1.2;font-weight:700;letter-spacing:-0.6px;">' + copy.heading + '</h1>' +
+    '<p style="margin:0 0 20px;color:#3b3a3e;font-size:18px;line-height:1.55;">' + copy.purchased + ' <strong>' + title + '</strong>.</p>' +
     '<p style="margin:0 0 34px;color:#3b3a3e;font-size:18px;line-height:1.55;">' + continuation + '</p>' +
-    '<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:12px;background:#171717;"><a href="' + link + '" style="display:inline-block;padding:18px 26px;color:#ffffff;font-size:17px;font-weight:700;line-height:1;text-decoration:none;">Continue your private quiz &#8594;</a></td></tr></table>' +
+    '<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:12px;background:#171717;"><a href="' + link + '" style="display:inline-block;padding:18px 26px;color:#ffffff;font-size:17px;font-weight:700;line-height:1;text-decoration:none;">' + copy.cta + '</a></td></tr></table>' +
     '<div style="height:1px;margin:42px 0 25px;background:#e3e0dc;"></div>' +
-    '<p style="margin:0 0 28px;color:#625f5d;font-size:15px;line-height:1.55;"><strong style="color:#29282c;">Private access:</strong> This link is personal to you and expires in 7 days. No account is needed.</p>' +
-    '<p style="margin:0 0 44px;color:#625f5d;font-size:15px;line-height:1.55;">Need help with your link? Reply to this email and we will help.</p>' +
-    '<p style="margin:0;color:#3b3a3e;font-size:16px;line-height:1.5;">Warmly,<br><strong>Quizzes it</strong></p>' +
+    '<p style="margin:0 0 28px;color:#625f5d;font-size:15px;line-height:1.55;"><strong style="color:#29282c;">' + copy.privateLabel + '</strong> ' + copy.privateText + '</p>' +
+    '<p style="margin:0 0 44px;color:#625f5d;font-size:15px;line-height:1.55;">' + copy.help + '</p>' +
+    '<p style="margin:0;color:#3b3a3e;font-size:16px;line-height:1.5;">' + copy.closing + '<br><strong>Quizzes it</strong></p>' +
     '</td></tr></table></td></tr></table></body></html>';
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -178,12 +210,14 @@ async function sendProductAccessEmail(purchase, token) {
     body: JSON.stringify({
       from: from.includes("<") ? from : "Quizzes it <" + from + ">",
       to: [purchase.email],
-      subject: "Your Quizzes it access link",
-      html,
+      subject: copy.subject,
+      html: html.replace('<html lang="en">', '<html lang="' + copy.lang + '">'),
       text: "Your private quiz is ready.\n\nPayment received for " + product.metadata.title + ".\n\n" + continuation + "\n\nContinue your private quiz: " + link + "\n\nThis personal link expires in 7 days. No account is needed.\n\nNeed help? Reply to this email."
     })
   });
   if (!response.ok) throw new Error("Email delivery failed");
+  const payload = await response.json().catch(() => null);
+  return typeof payload?.id === "string" ? payload.id : null;
 }
 function stripeConfigured() {
   return Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
@@ -258,7 +292,7 @@ async function createProductCheckout(email, quizProduct, offer, previewSession) 
     accessTokenHash: null, paidAt: null, expiresAt: null, emailSentAt: null, stripeSessionId: null,
     quizId: quizProduct.id, quizVersion: quizProduct.version, offerId: offer.id,
     offerSnapshot: { label: offer.label, currency: offer.currency, amount: offer.amount },
-    previewAnswers: previewSession.answers
+    previewAnswers: previewSession.answers, locale: requestLocale(previewSession.locale)
   };
   const params = new URLSearchParams();
   params.set("mode", "payment");
@@ -273,6 +307,7 @@ async function createProductCheckout(email, quizProduct, offer, previewSession) 
   params.set("metadata[quiz_id]", quizProduct.id);
   params.set("metadata[quiz_version]", String(quizProduct.version));
   params.set("metadata[offer_id]", offer.id);
+params.set("metadata[locale]", purchase.locale);
   params.set("integration_identifier", "quizzes_" + crypto.randomBytes(4).toString("hex"));
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -288,24 +323,99 @@ async function createProductCheckout(email, quizProduct, offer, previewSession) 
   return session.url;
 }
 
-async function markPaid(session) {
+function activatePaidPurchase(session) {
   const purchaseId = session.client_reference_id;
   if (!purchaseId) throw new Error("Missing purchase reference");
   const store = readStore();
   const purchase = store.purchases.find((item) => item.id === purchaseId);
   if (!purchase) throw new Error("Unknown purchase");
   if (purchase.stripeSessionId && session.id && purchase.stripeSessionId !== session.id) throw new Error("Checkout session does not match purchase");
-  if (purchase.status === "paid" && purchase.emailSentAt) return;
+  if (purchase.status === "paid") {
+    if (!purchase.emailStatus) {
+      purchase.emailStatus = purchase.emailSentAt ? "sent" : "failed";
+      purchase.emailAttempts = Number(purchase.emailAttempts || 0);
+      purchase.emailFailedAt = purchase.emailFailedAt || (purchase.emailSentAt ? null : new Date().toISOString());
+      purchase.emailLastError = purchase.emailLastError || (purchase.emailSentAt ? null : "Legacy paid purchase has no retryable encrypted access token");
+      purchase.emailMessageId = purchase.emailMessageId || null;
+      writeStore(store);
+    }
+    return purchase;
+  }
   const token = crypto.randomBytes(32).toString("base64url");
   purchase.accessTokenHash = hash(token);
+  purchase.accessTokenEncrypted = encryptAccessToken(token, purchase.id);
   purchase.status = "paid";
   purchase.paidAt = new Date().toISOString();
   purchase.expiresAt = new Date(Date.now() + accessDays * 24 * 60 * 60 * 1000).toISOString();
   purchase.stripeSessionId = session.id || purchase.stripeSessionId;
+  purchase.emailStatus = "pending";
+  purchase.emailAttempts = 0;
+  purchase.emailSentAt = null;
+  purchase.emailFailedAt = null;
+  purchase.emailLastError = null;
+  purchase.emailMessageId = null;
   writeStore(store);
-  await sendProductAccessEmail(purchase, token);
-  purchase.emailSentAt = new Date().toISOString();
+  return purchase;
+}
+
+function persistEmailState(purchaseId, update) {
+  const store = readStore();
+  const purchase = store.purchases.find((item) => item.id === purchaseId);
+  if (!purchase) throw new Error("Unknown purchase");
+  update(purchase);
   writeStore(store);
+  return purchase;
+}
+
+async function deliverAccessEmail(purchaseId) {
+  const purchase = persistEmailState(purchaseId, (item) => {
+    if (item.status !== "paid") throw new Error("Only paid purchases can receive access email");
+    if (item.emailStatus === "sent") return;
+    item.emailStatus = "pending";
+    item.emailAttempts = Number(item.emailAttempts || 0) + 1;
+    item.emailLastError = null;
+  });
+  if (purchase.emailStatus === "sent") return { status: "sent", alreadySent: true };
+  try {
+    const token = decryptAccessToken(purchase.accessTokenEncrypted, purchase.id);
+    const messageId = await sendProductAccessEmail(purchase, token);
+    persistEmailState(purchaseId, (item) => {
+      item.emailStatus = "sent";
+      item.emailSentAt = new Date().toISOString();
+      item.emailFailedAt = null;
+      item.emailLastError = null;
+      item.emailMessageId = messageId;
+    });
+    return { status: "sent" };
+  } catch (error) {
+    persistEmailState(purchaseId, (item) => {
+      item.emailStatus = "failed";
+      item.emailFailedAt = new Date().toISOString();
+      item.emailLastError = error instanceof Error ? error.message : "Email delivery failed";
+    });
+    return { status: "failed" };
+  }
+}
+
+function dispatchAccessEmail(purchaseId) {
+  if (emailDispatches.has(purchaseId)) return emailDispatches.get(purchaseId);
+  const task = deliverAccessEmail(purchaseId).finally(() => emailDispatches.delete(purchaseId));
+  emailDispatches.set(purchaseId, task);
+  return task;
+}
+
+async function retryAccessEmail(purchaseId) {
+  const purchase = readStore().purchases.find((item) => item.id === purchaseId);
+  if (!purchase) throw new Error("Unknown purchase");
+  if (purchase.status !== "paid") throw new Error("Only paid purchases can be retried");
+  if (purchase.emailStatus === "sent") return { status: "sent", alreadySent: true };
+  return dispatchAccessEmail(purchaseId);
+}
+
+async function markPaid(session) {
+  const purchase = activatePaidPurchase(session);
+  if (purchase.emailStatus === "sent") return { status: "sent", alreadySent: true };
+  return dispatchAccessEmail(purchase.id);
 }
 
 const server = http.createServer(async (request, response) => {
@@ -339,7 +449,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/health") return sendJson(response, 200, { status: "ok" });
   if (request.method === "GET" && url.pathname === "/api/quizzes") {
-    return sendJson(response, 200, { quizzes: listPublicQuizzes() });
+    return sendJson(response, 200, { catalogVersion, quizzes: listPublicQuizzes() });
   }
 
   const quizMatch = url.pathname.match(/^\/api\/quizzes\/([a-z0-9-]+)$/);
@@ -353,16 +463,17 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && previewMatch) {
       const product = getQuizBySlug(previewMatch[1]);
       if (!product || product.status !== "live" || (!isAdaptiveQuiz(product) && !product.preview?.enabled)) return sendJson(response, 404, { error: "Preview not found" });
-      return sendJson(response, 200, { title: product.metadata.title, adaptive: isAdaptiveQuiz(product), questionRange: product.metadata.questionRange || null, questions: previewQuestions(product).map((question) => ({ id: question.id, text: question.text, options: question.options.map((option) => ({ id: option.id, text: option.text })) })) });
+      return sendJson(response, 200, { title: product.metadata.title, adaptive: isAdaptiveQuiz(product), questionRange: product.metadata.questionRange || null, questions: previewQuestions(product, requestLocale(url.searchParams.get("locale"))).map((question) => ({ id: question.id, text: question.text, options: question.options.map((option) => ({ id: option.id, text: option.text })) })) });
     }
     if (request.method === "POST" && previewMatch) {
       const product = getQuizBySlug(previewMatch[1]);
       if (!product || product.status !== "live" || (!isAdaptiveQuiz(product) && !product.preview?.enabled)) return sendJson(response, 404, { error: "Preview not found" });
       const body = JSON.parse((await readBody(request)).toString("utf8"));
-      const teaser = evaluatePreview(product, body.answers);
+      const locale = requestLocale(body.locale);
+const teaser = evaluatePreview(product, body.answers, locale);
       const token = crypto.randomBytes(32).toString("base64url");
       const store = readStore();
-      store.previewSessions.push({ tokenHash: hash(token), quizId: product.id, quizVersion: product.version, answers: body.answers, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
+      store.previewSessions.push({ tokenHash: hash(token), quizId: product.id, quizVersion: product.version, answers: body.answers, locale, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
       writeStore(store);
       return sendJson(response, 200, { teaser }, { "Set-Cookie": "quiz_preview=" + encodeURIComponent(token) + "; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax" });
     }
@@ -404,7 +515,7 @@ const server = http.createServer(async (request, response) => {
     const answers = Array.isArray(body.answers) ? body.answers : [];
     const savedPreview = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
     if (!body.retake && JSON.stringify(answers.slice(0, savedPreview.length)) !== JSON.stringify(savedPreview)) return sendJson(response, 400, { error: "Preview answers do not match this access link" });
-    const next = nextAdaptiveQuestion(product, answers);
+    const next = nextAdaptiveQuestion(product, answers, requestLocale(purchase.locale));
     purchase.v31Session = { ...next.state, updatedAt: new Date().toISOString() };
     const sessionStore = readStore();
     const sessionIndex = sessionStore.purchases.findIndex((item) => item.id === purchase.id);
@@ -425,7 +536,7 @@ const server = http.createServer(async (request, response) => {
       if (!isRetake && isAdaptiveQuiz(product) && JSON.stringify((Array.isArray(answers) ? answers : []).slice(0, previewAnswers.length)) !== JSON.stringify(previewAnswers)) return sendJson(response, 400, { error: "Preview answers do not match this access link" });
       if (isAdaptiveQuiz(product) && !isAssessmentComplete(product, answers)) return sendJson(response, 409, { error: "Continue answering the adaptive questions before viewing your result" });
       if (!isRetake && !isAdaptiveQuiz(product) && previewAnswers.length && Array.isArray(body.answers) && body.answers.length === product.questions.length - previewAnswers.length) answers = [...previewAnswers, ...body.answers];
-      const outcome = evaluateQuiz(product, answers);
+      const outcome = evaluateQuiz(product, answers, requestLocale(purchase.locale));
       purchase.completedAnswers = answers;
       purchase.v31Session = outcome.state;
     purchase.v31Result = outcome.completed.result;
@@ -445,6 +556,10 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, "0.0.0.0", () => {
-  console.log("Quiz service ready on port " + port);
-});
+if (process.env.NODE_ENV !== "test" && process.env.QUIZ_NO_LISTEN !== "1") {
+  server.listen(port, "0.0.0.0", () => {
+    console.log("Quiz service ready on port " + port);
+  });
+}
+
+export { accessPurchase, markPaid, retryAccessEmail, server };
