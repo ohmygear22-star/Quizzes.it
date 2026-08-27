@@ -127,8 +127,8 @@ async function catalogue() {
     try {
       const data = await getJson("/api/access/" + encodeURIComponent(token));
       track(mode === "retake" ? "paid_quiz_retake_started" : "paid_quiz_resumed", { quizId: data.quiz.id });
-      if (data.adaptive) return adaptiveAccess(token, data, mode);
       if (data.completed && mode !== "retake") return fullResult(data, token);
+      if (data.adaptive) return adaptiveAccess(token, data, mode);
       const answers = [];
       const start = mode === "retake" ? 0 : (data.previewAnswerCount || 0);
       function ask(index) {

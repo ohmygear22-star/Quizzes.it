@@ -22,3 +22,11 @@ test("paid result uses customer-facing language", () => {
   assert.match(client, /Retake this quiz/);
   assert.equal(client.includes(String.fromCharCode(0xfffd)), false);
 });
+
+test("completed adaptive access renders the persisted result before resume validation", () => {
+  const client = fs.readFileSync(new URL("../public/multi-quiz.js", import.meta.url), "utf8");
+  const completedGuard = 'if (data.completed && mode !== "retake") return fullResult(data, token);';
+  const adaptiveGuard = 'if (data.adaptive) return adaptiveAccess(token, data, mode);';
+  assert.ok(client.indexOf(completedGuard) >= 0);
+  assert.ok(client.indexOf(completedGuard) < client.indexOf(adaptiveGuard));
+});
