@@ -30,7 +30,12 @@
  const hant = localStorage.getItem("quizzes.locale") === "zh-Hant";
  const title = hant ? (quiz.title?.["zh-Hant"] || meta.titleZh || meta.title) : (quiz.title?.en || meta.title);
  const description = hant ? (quiz.description?.["zh-Hant"] || meta.descriptionZh || meta.description) : (quiz.description?.en || meta.description);
- return { ...meta, title, description };
+ const sourceQuestionRange = quiz.flow?.questionRange || meta.questionRange || "Adaptive questions";
+ const questionRange = hant ? ({ "Adaptive 20–30 questions": "自適應 20–30 條問題", "Adaptive 15–18 questions": "自適應 15–18 條問題", "Adaptive questions": "自適應問題" }[sourceQuestionRange] || sourceQuestionRange) : sourceQuestionRange;
+ const previewLabel = hant ? "5 條免費問題" : "5 free questions";
+ const duration = meta.durationMinutes || "—";
+ const durationLabel = hant ? "約 " + duration + " 分鐘" : "About " + duration + " minutes";
+ return { ...meta, title, description, questionRange, previewLabel, durationLabel };
 }
 
 async function catalogue() {
@@ -40,10 +45,7 @@ async function catalogue() {
       const rows = quizzes.map((quiz, index) => {
         const meta = publicCopy(quiz);
         const offer = quiz.offers[0];
-        return '<article class="row"><small>' + String(index + 1).padStart(2, "0") + '</small><div><h2>' + escapeHtml(meta.title) + '</h2><p>' + escapeHtml(meta.description) + '</p><small class="catalogue-meta">5 free questions · ' + escapeHtml(quiz.flow?.questionRange || meta.questionRange || "Adaptive questions") + '</small></div><button class="primary" onclick="window.multiQuizGo(\'quiz/' + escapeHtml(quiz.slug) + '\')">View quiz →</button></article>';
-m["zh-Hant"]["Adaptive 20–30 questions"]="自適應 20–30 條問題";
-m["zh-Hant"]["About 6–9 minutes"]="約 6–9 分鐘";
-m["zh-Hant"]["Your early insight is free. Full personalized analysis costs HK$29.00."]="你的初步洞察免費；完整個人分析費用為 HK$29.00。";
+        return '<article class="row"><small>' + String(index + 1).padStart(2, "0") + '</small><div><h2>' + escapeHtml(meta.title) + '</h2><p>' + escapeHtml(meta.description) + '</p><small class="catalogue-meta">' + escapeHtml(meta.previewLabel) + ' · ' + escapeHtml(meta.questionRange) + '</small></div><button class="primary" onclick="window.multiQuizGo(\'quiz/' + escapeHtml(quiz.slug) + '\')">View quiz →</button></article>';
       }).join("");
       render('<section class="page"><p class="ey">ALL QUIZZES</p><h1>Find the question that follows you around.</h1><p class="lead catalogue-offer">Start free · 5 preview questions · full analysis HK$29.00</p><div class="list">' + rows + "</div></section>");
     } catch (error) {
@@ -59,7 +61,7 @@ m["zh-Hant"]["Your early insight is free. Full personalized analysis costs HK$29
       const meta = publicCopy(quiz);
       const offer = quiz.offers[0];
       document.title = quiz.seo?.title || meta.title + " | Quizzes it";
-      render('<section class="page"><button class="back" onclick="window.multiQuizGo(\'catalog\')">← Back</button><p class="ey">' + escapeHtml(meta.category) + '</p><h1>' + escapeHtml(meta.title) + '</h1><p class="lead">' + escapeHtml(meta.description) + '</p><div class="facts"><span>' + escapeHtml(quiz.flow?.questionRange || meta.questionRange || "12 questions") + '</span><span>About ' + escapeHtml(meta.durationMinutes || "—") + ' minutes</span></div><button class="primary" onclick="window.multiQuizGo(\'preview/' + escapeHtml(quiz.slug) + '\')">Start free preview →</button><p class="micro">Your early insight is free. Full personalized analysis costs ' + money(offer.amount, offer.currency) + '.</p></section>');
+      render('<section class="page"><button class="back" onclick="window.multiQuizGo(\'catalog\')">← Back</button><p class="ey">' + escapeHtml(meta.category) + '</p><h1>' + escapeHtml(meta.title) + '</h1><p class="lead">' + escapeHtml(meta.description) + '</p><div class="facts"><span>' + escapeHtml(meta.questionRange) + '</span><span>' + escapeHtml(meta.durationLabel) + '</span></div><button class="primary" onclick="window.multiQuizGo(\'preview/' + escapeHtml(quiz.slug) + '\')">Start free preview →</button><p class="micro">Your early insight is free. Full personalized analysis costs ' + money(offer.amount, offer.currency) + '.</p></section>');
     } catch (error) {
       render('<section class="page"><h1>Quiz not found.</h1></section>');
     }
@@ -241,8 +243,6 @@ function route() {
 })();
 /* QUIZES_SHELL_LOCALE_PATCH_V2 */(()=>{const m={en:{'PRIVATE SELF-DISCOVERY':'PRIVATE SELF-DISCOVERY','What do you protect when no one is watching?':'What do you protect when no one is watching?','Start with a free five-question preview. Unlock the complete personal analysis only if you want to continue.':'Start with a free five-question preview. Unlock the complete personal analysis only if you want to continue.','Find your hidden pattern':'Find your hidden pattern','Start free · full analysis HK$29':'Start free · full analysis HK$29','Start free preview →':'Start free preview →','No sign-up to begin. Private paid access by email.':'No sign-up to begin. Private paid access by email.','ALL QUIZZES':'ALL QUIZZES','Find the question that follows you around.':'Find the question that follows you around.','Start free · 5 preview questions · full analysis HK$29.00':'Start free · 5 preview questions · full analysis HK$29.00','View quiz →':'View quiz →','Coming soon':'Coming soon','How it works':'How it works','All quizzes':'All quizzes','Support':'Support','Privacy':'Privacy','Terms':'Terms','Choose this quiz →':'Choose this quiz →'},'zh-Hant':{'PRIVATE SELF-DISCOVERY':'私人自我探索','What do you protect when no one is watching?':'沒有人看見時，你在保護甚麼？','Start with a free five-question preview. Unlock the complete personal analysis only if you want to continue.':'先免費回答五條預覽問題；如果想繼續，再解鎖完整個人分析。','Find your hidden pattern':'發現你的內在模式','Start free · full analysis HK$29':'免費開始 · 完整分析 HK$29','Start free preview →':'開始免費預覽 →','No sign-up to begin. Private paid access by email.':'不用註冊即可開始。付款後會以電郵提供私人存取連結。','ALL QUIZZES':'所有測驗','Find the question that follows you around.':'找出一直跟著你的那個問題。','Start free · 5 preview questions · full analysis HK$29.00':'免費開始 · 5 條預覽問題 · 完整分析 HK$29.00','View quiz →':'查看測驗 →','Coming soon':'即將推出','How it works':'測驗如何運作','All quizzes':'所有測驗','Support':'支援','Privacy':'私隱','Terms':'條款','Choose this quiz →':'選擇這個測驗 →'}};m["zh-Hant"]["← Back"]="← 返回";m["zh-Hant"]["EARLY SIGNAL — NOT YOUR FINAL RESULT"]="初步訊號 — 並非你的最終結果";m["zh-Hant"]["There is more to see in your pattern."]="你的模式還有更多值得了解。";m["zh-Hant"]["Unlock my full analysis — HK$29.00 →"]="解鎖我的完整分析 — HK$29.00 →";m["zh-Hant"]["Private link by email · available for 7 days."]="私人連結將透過電郵寄出 · 有效期 7 天。";m["zh-Hant"]["Are You Attached\u2014or Actually Compatible?"]="\u4f60\u662f\u4f9d\u6200\uff0c\u9084\u662f\u771f\u6b63\u5408\u62cd\uff1f";
 m["zh-Hant"]["Adaptive 20-30 questions"]="自適應 20–30 條問題";
-m["zh-Hant"]["About 6–9 minutes"]="約 6–9 分鐘";
-m["zh-Hant"]["Your early insight is free. Full personalized analysis costs HK$29.00."]="你的初步洞察免費；完整個人分析費用為 HK$29.00。";
 m["zh-Hant"]["Separate emotional attachment from real-life compatibility."]="\u5206\u8fa8\u60c5\u611f\u4f9d\u6200\u8207\u73fe\u5be6\u751f\u6d3b\u4e2d\u7684\u5951\u5408\u5ea6\u3002";
 m["zh-Hant"]["What Red Flag Are You Most Likely to Explain Away?"]="\u4f60\u6700\u5bb9\u6613\u66ff\u54ea\u7a2e\u7d05\u65d7\u8b66\u8a0a\u627e\u85c9\u53e3\uff1f";
 m["zh-Hant"]["See which warning signs you are most likely to rationalize."]="\u770b\u898b\u4f60\u6700\u5bb9\u6613\u5408\u7406\u5316\u7684\u8b66\u544a\u8a0a\u865f\u3002";
@@ -252,8 +252,6 @@ m["zh-Hant"]["5 free questions \u00b7 Adaptive 20-30 questions"]="\u0035 \u689d\
 m["zh-Hant"]["5 free questions \u00b7 Adaptive 15-18 questions"]="\u0035 \u689d\u514d\u8cbb\u554f\u984c \u00b7 \u81ea\u9069\u61c9 \u0031\u0035\u2013\u0031\u0038 \u689d\u554f\u984c";
 m["zh-Hant"]["View quiz →"] = "查看測驗 →";
 m["zh-Hant"]["Adaptive 20-30 questions"]="自適應 20–30 條問題";
-m["zh-Hant"]["About 6–9 minutes"]="約 6–9 分鐘";
-m["zh-Hant"]["Your early insight is free. Full personalized analysis costs HK$29.00."]="你的初步洞察免費；完整個人分析費用為 HK$29.00。";
 m["zh-Hant"]["Adaptive 20-30 questions"]="\u81ea\u9069\u61c9 20\u201330 \u689d\u554f\u984c";m["zh-Hant"]["About 6\u20139 minutes"]="\u7d04 6\u20139 \u5206\u9418";m["zh-Hant"]["Your early insight is free. Full personalized analysis costs HK$29.00."]="\u4f60\u7684\u521d\u6b65\u6d1e\u6089\u514d\u8cbb\uff1b\u5b8c\u6574\u500b\u4eba\u5206\u6790\u8cbb\u7528\u70ba HK$29.00\u3002";m["zh-Hant"]["Adaptive 15–18 questions"]="自適應 15–18 條問題";m["zh-Hant"]["About 5–7 minutes"]="約 5–7 分鐘";const originals=new WeakMap();const l=()=>localStorage.getItem('quizzes.locale')==='zh-Hant'?'zh-Hant':'en';const a=()=>{const x=m[l()],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),n=[];while(w.nextNode())n.push(w.currentNode);n.forEach(t=>{if(!originals.has(t))originals.set(t,t.nodeValue);const raw=originals.get(t),v=raw.trim(),next=v&&x[v]?raw.replace(v,x[v]):raw;if(t.nodeValue!==next)t.nodeValue=next});document.documentElement.lang=l()};const r=()=>{if(typeof window.onhashchange==='function')window.onhashchange();setTimeout(a,0)};const q=document.getElementById('app');if(q)new MutationObserver(a).observe(q,{childList:true,subtree:true});a();document.addEventListener('click',e=>{if(e.target&&e.target.getAttribute('role')==='menuitemradio')setTimeout(r,0)});window.quizzesApplyShellLocale=a})()
 // UX_LOCALE_REPAIR_V1
 ;(() => { if (!document.documentElement || typeof document.createTreeWalker !== "function") return;

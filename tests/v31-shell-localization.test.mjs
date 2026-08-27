@@ -7,3 +7,11 @@ test('shell locale patch keeps only supported locales',()=>{assert.doesNotMatch(
 test('locale changes trigger active route rerender',()=>{assert.match(source,/window\.onhashchange\(\)/);assert.match(source,/menuitemradio/);});
 test('shell patch translates rendered text nodes after mutations',()=>{assert.match(source,/createTreeWalker/);assert.match(source,/MutationObserver/);});
 test('catalogue uses authored bilingual titles and descriptions for dynamic cards',()=>{assert.match(source,/function publicCopy\(quiz\)/);assert.match(source,/quiz\.title\?\.\["zh-Hant"\]/);assert.match(source,/quiz\.description\?\.\["zh-Hant"\]/);});
+
+test('catalogue and detail localize dynamic facts for zh-Hant',()=>{
+  assert.match(source,/const questionRange = hant ?/);
+  assert.match(source,/const previewLabel = hant ?/);
+  assert.match(source,/const durationLabel = hant ?/);
+  assert.match(source,/escapeHtml\(meta\.previewLabel\).*escapeHtml\(meta\.questionRange\)/s);
+  assert.match(source,/escapeHtml\(meta\.durationLabel\)/);
+});
