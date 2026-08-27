@@ -6,3 +6,4 @@ test('shell locale patch includes EN and Traditional Chinese visible copy',()=>{
 test('shell locale patch keeps only supported locales',()=>{assert.doesNotMatch(source,/zh-CN|zh-Hans|Simplified|簡體/);assert.match(source,/localStorage\.getItem\('quizzes\.locale'\)/);});
 test('locale changes trigger active route rerender',()=>{assert.match(source,/window\.onhashchange\(\)/);assert.match(source,/menuitemradio/);});
 test('shell patch translates rendered text nodes after mutations',()=>{assert.match(source,/createTreeWalker/);assert.match(source,/MutationObserver/);});
+test('catalogue uses authored bilingual titles and descriptions for dynamic cards',()=>{assert.match(source,/function publicCopy\(quiz\)/);assert.match(source,/quiz\.title\?\.\["zh-Hant"\]/);assert.match(source,/quiz\.description\?\.\["zh-Hant"\]/);});

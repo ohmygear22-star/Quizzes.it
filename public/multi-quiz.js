@@ -25,12 +25,20 @@
     render('<section class="hero"><div class="content"><p class="ey">PRIVATE SELF-DISCOVERY</p><h1>What do you protect when no one is watching?</h1><p class="lead">Start with a free five-question preview. Unlock the complete personal analysis only if you want to continue.</p><div class="intro"><div class="mark">☆</div><div><strong>Find your hidden pattern</strong><span>Start free · full analysis HK$29</span></div></div><button class="primary" onclick="window.multiQuizGo(\'catalog\')">Start free preview →</button><p class="micro">No sign-up to begin. Private paid access by email.</p></div></section>');
   }
 
-  async function catalogue() {
+  function publicCopy(quiz) {
+ const meta = quiz.metadata || {};
+ const hant = localStorage.getItem("quizzes.locale") === "zh-Hant";
+ const title = hant ? (quiz.title?.["zh-Hant"] || meta.titleZh || meta.title) : (quiz.title?.en || meta.title);
+ const description = hant ? (quiz.description?.["zh-Hant"] || meta.descriptionZh || meta.description) : (quiz.description?.en || meta.description);
+ return { ...meta, title, description };
+}
+
+async function catalogue() {
     render('<section class="page"><p class="ey">ALL QUIZZES</p><h1>Find the question that follows you around.</h1><p class="lead">Loading available quizzes…</p></section>');
     try {
       const { quizzes } = await getJson("/api/quizzes");
       const rows = quizzes.map((quiz, index) => {
-        const meta = quiz.metadata;
+        const meta = publicCopy(quiz);
         const offer = quiz.offers[0];
         return '<article class="row"><small>' + String(index + 1).padStart(2, "0") + '</small><div><h2>' + escapeHtml(meta.title) + '</h2><p>' + escapeHtml(meta.description) + '</p><small class="catalogue-meta">5 free questions · ' + escapeHtml(quiz.flow?.questionRange || meta.questionRange || "Adaptive questions") + '</small></div><button class="primary" onclick="window.multiQuizGo(\'quiz/' + escapeHtml(quiz.slug) + '\')">View quiz →</button></article>';
 m["zh-Hant"]["Adaptive 20-30 questions"]="自適應 20–30 條問題";
@@ -48,7 +56,7 @@ m["zh-Hant"]["Your early insight is free. Full personalized analysis costs HK$29
     render('<section class="page"><p class="ey">QUIZ</p><h1>Loading…</h1></section>');
     try {
       const quiz = await getJson("/api/quizzes/" + encodeURIComponent(slug));
-      const meta = quiz.metadata;
+      const meta = publicCopy(quiz);
       const offer = quiz.offers[0];
       document.title = quiz.seo?.title || meta.title + " | Quizzes it";
       render('<section class="page"><button class="back" onclick="window.multiQuizGo(\'catalog\')">← Back</button><p class="ey">' + escapeHtml(meta.category) + '</p><h1>' + escapeHtml(meta.title) + '</h1><p class="lead">' + escapeHtml(meta.description) + '</p><div class="facts"><span>' + escapeHtml(quiz.flow?.questionRange || meta.questionRange || "12 questions") + '</span><span>About ' + escapeHtml(meta.durationMinutes || "—") + ' minutes</span></div><button class="primary" onclick="window.multiQuizGo(\'preview/' + escapeHtml(quiz.slug) + '\')">Start free preview →</button><p class="micro">Your early insight is free. Full personalized analysis costs ' + money(offer.amount, offer.currency) + '.</p></section>');
