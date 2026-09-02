@@ -165,12 +165,13 @@ function previewSessionFor(request, quiz) {
 function productAccessPayload(purchase) {
   const product = quizForPurchase(purchase);
   if (!product) return null;
+  const locale = requestLocale(purchase.locale);
   const previewAnswers = Array.isArray(purchase.previewAnswers) ? purchase.previewAnswers : [];
   const adaptive = isAdaptiveQuiz(product);
   const completedAnswers = Array.isArray(purchase.completedAnswers) ? purchase.completedAnswers : null;
   const completed = purchase.v31Result ? { result: purchase.v31Result } : (completedAnswers ? evaluateQuiz(product, completedAnswers, requestLocale(purchase.locale)).completed : null);
   return {
-    quiz: { id: product.id, slug: product.slug, version: product.version, title: product.metadata.title, questionRange: product.metadata.questionRange || null },
+    quiz: { id: product.id, slug: product.slug, version: product.version, title: locale === "zh-Hant" && product.metadata.titleZh ? product.metadata.titleZh : product.metadata.title, questionRange: product.metadata.questionRange || null },
     questions: [],
     previewAnswerCount: previewAnswers.length,
     previewAnswers: adaptive ? previewAnswers : undefined,
@@ -188,7 +189,8 @@ async function sendProductAccessEmail(purchase, token) {
   if (!apiKey || !from) throw new Error("Email delivery is not configured");
   const link = appOrigin + "/access/" + encodeURIComponent(token);
   const copy = getAccessEmailCopy(requestLocale(purchase.locale));
-  const title = String(product.metadata.title).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const productTitle = requestLocale(purchase.locale) === "zh-Hant" && product.metadata.titleZh ? product.metadata.titleZh : product.metadata.title;
+  const title = String(productTitle).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const continuation = Array.isArray(purchase.previewAnswers) && purchase.previewAnswers.length ? copy.continuationSaved : copy.continuationFresh;
   const html = '<!doctype html><html lang="en"><body style="margin:0;padding:0;background:#f5f4f2;color:#29282c;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">' +
     '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f4f2;"><tr><td align="center" style="padding:40px 16px;">' +

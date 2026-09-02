@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyPresentationCopy } from "./presentation-copy.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const raw = JSON.parse(fs.readFileSync(path.join(here, "source/authoritative-source.json"), "utf8"));
@@ -32,4 +33,4 @@ function v2Quiz(id) {
   const source = v2.quizzes?.[id]; if (!source) throw new Error("Unknown V3.1 quiz: " + id);
   return { id, version: "3.1", qaPersonas: source.qaPersonas, stopping: { minTotal: number(source.stopping["Min Total"]), maxTotal: number(source.stopping["Max Total"]), leadMarginToStop: number(source.stopping["Lead Margin To Stop"]), minStrongPrimaryAnswers: number(source.stopping["Min Strong Primary Answers"]), minDistinctEvidenceDomains: number(source.stopping["Min Distinct Evidence Domains"]), primaryStabilityWindow: number(source.stopping["Primary Stability Window"]) }, metadata: { title: source.metadata.title, titleZh: source.metadata.title_zh, description: source.metadata.description, descriptionZh: source.metadata.description_zh, category: source.metadata.category }, hypotheses: Object.entries(source.hypotheses).map(([hypothesisId, hypothesis]) => ({ id: hypothesisId, label: hypothesis.label })), resultBlueprints: source.resultBlueprints, questions: source.questions.map((question) => ({ id: question.id, number: question.number, stage: question.stage, text: question.text, textZh: question.textZh, scenarioDomain: question.scenarioDomain, designedPair: question.designedPair, pairSeparationScore: number(question.pairSeparationScore), informationValue: question.informationValue, options: question.options.map((option) => ({ id: option.id, text: option.text, textZh: option.textZh, evidence: option.evidence, evidenceRationale: option.evidenceRationale })) })).sort((a, b) => a.number - b.number) };
 }
-export function quizFromSource(id) { return v2.quizzes?.[id] ? v2Quiz(id) : tableQuiz(id); }
+export function quizFromSource(id) { return applyPresentationCopy(v2.quizzes?.[id] ? v2Quiz(id) : tableQuiz(id)); }

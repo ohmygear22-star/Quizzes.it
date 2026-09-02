@@ -115,3 +115,15 @@ test("authored counter-evidence guidance retains a selected counter-example when
   const result = completed(quiz, { answers, primary: "H1", secondary: "H2" });
   assert.ok(result.evidenceMoments.some((moment) => moment.questionId === "REL01-Q03" && moment.optionId === "B" && moment.kind === "counter-evidence"));
 });
+
+test("alternative-explanation phase exposes a customer-facing secondary label without editorial instructions", () => {
+  for (const quiz of [byId("REL01"), byId("REL06"), byId("REL13")]) {
+    for (const locale of ["en", "zh-Hant"]) {
+      const result = completed(quiz, { primary: "H1", secondary: "H2", locale });
+      assert.ok(result.truthPacket.primaryLabel);
+      assert.ok(result.truthPacket.secondaryLabel);
+      assert.match(result.phases[5].content.toLocaleLowerCase(locale), new RegExp(result.truthPacket.secondaryLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").toLocaleLowerCase(locale)));
+      assert.doesNotMatch(result.phases[5].content, /\bH[1-4]\b|\bcustomer\b|\bframe\b|emphasi[sz]e/i);
+    }
+  }
+});

@@ -12,6 +12,7 @@ test('catalogue and detail localize dynamic facts for zh-Hant',()=>{
   assert.match(source,/const questionRange = hant ?/);
   assert.match(source,/const previewLabel = hant ?/);
   assert.match(source,/const durationLabel = hant ?/);
-  assert.match(source,/escapeHtml\(meta\.previewLabel\).*escapeHtml\(meta\.questionRange\)/s);
+  const detail=source.slice(source.indexOf("async function detail"),source.indexOf("async function preview"));
+ assert.doesNotMatch(detail,/previewLabel|questionRange/);
   assert.match(source,/escapeHtml\(meta\.durationLabel\)/);
 });
